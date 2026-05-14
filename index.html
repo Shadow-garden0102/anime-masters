@@ -1,0 +1,1774 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>⚔️ ANIME MASTERS - Pixel Art Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        
+        * {
+            font-family: 'Press Start 2P', monospace;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+        }
+        
+        .pixel-btn {
+            position: relative;
+            transition: all 0.05s linear;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .pixel-btn:active {
+            transform: translate(2px, 2px);
+        }
+        
+        .pixel-card {
+            box-shadow: 4px 4px 0px 0px rgba(0,0,0,0.5);
+        }
+        
+        .pixel-text-shadow {
+            text-shadow: 2px 2px 0px rgba(0,0,0,0.5);
+        }
+        
+        .scanlines {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .scanlines::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15) 0px,
+                rgba(0, 0, 0, 0.15) 2px,
+                transparent 2px,
+                transparent 4px
+            );
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        @keyframes pixel-bounce {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+        }
+        
+        @keyframes pixel-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .animate-pixel-bounce {
+            animation: pixel-bounce 0.3s steps(2) infinite;
+        }
+        
+        .animate-pixel-pulse {
+            animation: pixel-pulse 0.5s steps(2) infinite;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+            border: 1px solid #fff;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #444;
+            border: 1px solid #fff;
+        }
+        
+        .pixel-bg {
+            background-image: 
+                linear-gradient(rgba(0,255,0,0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,255,0,0.05) 1px, transparent 1px);
+            background-size: 16px 16px;
+        }
+        
+        .ranking-table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        .ranking-table th, .ranking-table td {
+            border: 1px solid #333;
+            padding: 6px;
+            text-align: center;
+            font-size: 8px;
+        }
+        .ranking-table th {
+            background: #1a1a1a;
+            color: #ffd700;
+        }
+        
+        .admin-minimized {
+            width: 180px;
+        }
+        .admin-expanded {
+            width: 280px;
+        }
+        
+        .admin-table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        .admin-table th, .admin-table td {
+            border: 1px solid #333;
+            padding: 8px;
+            font-size: 10px;
+            text-align: left;
+        }
+        .admin-table th {
+            background: #1a1a1a;
+            color: #ffd700;
+        }
+        .admin-table tr:hover {
+            background: #2a2a2a;
+        }
+    </style>
+</head>
+<body class="bg-black pixel-bg min-h-screen">
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        // ==================== BANCO DE DADOS ====================
+        
+        function initDatabase() {
+            if (!localStorage.getItem('animeMastersDB')) {
+                const initialDB = {
+                    users: [],
+                    vipKeys: [],
+                    nextId: 1,
+                    version: '1.0',
+                    lastBackup: new Date().toISOString()
+                };
+                localStorage.setItem('animeMastersDB', JSON.stringify(initialDB));
+            }
+            return JSON.parse(localStorage.getItem('animeMastersDB'));
+        }
+
+        function saveDatabase(db) {
+            localStorage.setItem('animeMastersDB', JSON.stringify(db));
+        }
+
+        function findUserByUsername(username) {
+            const db = initDatabase();
+            return db.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+        }
+
+        function findUserByEmail(email) {
+            const db = initDatabase();
+            return db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        }
+
+        function createUser(userData) {
+            const db = initDatabase();
+            
+            if (findUserByUsername(userData.username)) {
+                throw new Error('Usuário já existe!');
+            }
+            if (findUserByEmail(userData.email)) {
+                throw new Error('Email já cadastrado!');
+            }
+            
+            const newUser = {
+                id: db.nextId++,
+                username: userData.username,
+                email: userData.email,
+                password: userData.password,
+                isAdmin: userData.isAdmin || false,
+                createdAt: new Date().toISOString(),
+                lastLogin: null,
+                gameData: userData.gameData || null
+            };
+            
+            db.users.push(newUser);
+            saveDatabase(db);
+            return newUser;
+        }
+
+        function updateUser(username, updatedData) {
+            const db = initDatabase();
+            const index = db.users.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
+            
+            if (index === -1) {
+                throw new Error('Usuário não encontrado!');
+            }
+            
+            db.users[index] = { ...db.users[index], ...updatedData };
+            saveDatabase(db);
+            return db.users[index];
+        }
+
+        function deleteUser(username) {
+            const db = initDatabase();
+            const index = db.users.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
+            
+            if (index === -1) {
+                throw new Error('Usuário não encontrado!');
+            }
+            
+            const deleted = db.users.splice(index, 1)[0];
+            saveDatabase(db);
+            return deleted;
+        }
+
+        function getAllUsers() {
+            const db = initDatabase();
+            return db.users;
+        }
+
+        function updateLastLogin(username) {
+            return updateUser(username, { lastLogin: new Date().toISOString() });
+        }
+
+        // Mapeamento de níveis VIP
+        const VIP_LEVEL_MAP = {
+            'BRONZE': 1,
+            'SILVER': 2,
+            'GOLD': 3,
+            'PLATINUM': 4,
+            'DIAMOND': 5
+        };
+
+        function generateVIPKey(vipLevel, generatedBy) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let key = `VIP-${vipLevel.toUpperCase()}-`;
+            for (let i = 0; i < 12; i++) {
+                key += chars[Math.floor(Math.random() * chars.length)];
+                if (i === 3 || i === 7) key += '-';
+            }
+            return key;
+        }
+
+        function saveVIPKey(key, vipLevel, generatedBy) {
+            const db = initDatabase();
+            if (!db.vipKeys) db.vipKeys = [];
+            
+            // Converte o nível para número
+            const levelNumber = typeof vipLevel === 'string' ? VIP_LEVEL_MAP[vipLevel.toUpperCase()] || 5 : vipLevel;
+            
+            db.vipKeys.push({
+                key: key,
+                vipLevel: levelNumber,
+                vipLevelName: typeof vipLevel === 'string' ? vipLevel.toUpperCase() : vipLevel,
+                generatedBy: generatedBy,
+                generatedAt: new Date().toISOString(),
+                used: false,
+                usedBy: null,
+                usedAt: null
+            });
+            
+            saveDatabase(db);
+            return key;
+        }
+
+        function generateMultipleVIPKeys(vipLevel, quantity, generatedBy) {
+            const keys = [];
+            for (let i = 0; i < quantity; i++) {
+                const key = generateVIPKey(vipLevel, generatedBy);
+                saveVIPKey(key, vipLevel, generatedBy);
+                keys.push(key);
+            }
+            return keys;
+        }
+
+        function findVIPKey(key) {
+            const db = initDatabase();
+            if (!db.vipKeys) return null;
+            return db.vipKeys.find(k => k.key === key);
+        }
+
+        function useVIPKey(key, username) {
+            const db = initDatabase();
+            const keyData = db.vipKeys.find(k => k.key === key);
+            
+            if (!keyData) return false;
+            if (keyData.used) return false;
+            
+            keyData.used = true;
+            keyData.usedBy = username;
+            keyData.usedAt = new Date().toISOString();
+            
+            saveDatabase(db);
+            return keyData.vipLevel; // Retorna o nível como número
+        }
+
+        function getAllVIPKeys() {
+            const db = initDatabase();
+            return db.vipKeys || [];
+        }
+
+        function getDatabaseStats() {
+            const db = initDatabase();
+            const totalCoins = db.users.reduce((sum, u) => sum + (u.gameData?.coins || 0), 0);
+            return {
+                totalUsers: db.users.length,
+                totalVIPKeys: db.vipKeys?.length || 0,
+                usedVIPKeys: db.vipKeys?.filter(k => k.used).length || 0,
+                adminUsers: db.users.filter(u => u.isAdmin).length,
+                totalCoins: totalCoins
+            };
+        }
+
+        function exportUsersToCSV() {
+            const users = getAllUsers();
+            const headers = ['ID', 'Username', 'Email', 'Admin', 'Coins', 'Gems', 'Level', 'VIP Level', 'Created At', 'Last Login'];
+            
+            const rows = users.map(u => [
+                u.id,
+                u.username,
+                u.email,
+                u.isAdmin ? 'Sim' : 'Não',
+                u.gameData?.coins || 0,
+                u.gameData?.gems || 0,
+                u.gameData?.pickaxeLevel || 0,
+                u.gameData?.vipLevel || 0,
+                u.createdAt,
+                u.lastLogin || 'Nunca'
+            ]);
+            
+            const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `usuarios_${new Date().toISOString().slice(0,19)}.csv`);
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // ==================== FORMATAÇÃO ====================
+        function formatNumber(num) {
+            if (num === undefined || num === null) return '0';
+            if (num >= 1e18) return (num / 1e18).toFixed(1) + 'Qi';
+            if (num >= 1e15) return (num / 1e15).toFixed(1) + 'Qa';
+            if (num >= 1e12) return (num / 1e12).toFixed(1) + 'T';
+            if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+            if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+            if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+            return Math.floor(num).toString();
+        }
+
+        // ==================== CONSTANTES DO JOGO ====================
+        
+        const CLANS = [
+            { name: 'FIGHTER', rarity: 'COMMON', chance: 40, damage: 1.1, luck: 1, textColor: 'text-gray-400' },
+            { name: 'SWORDSMAN', rarity: 'COMMON', chance: 35, damage: 1.2, luck: 1, textColor: 'text-gray-400' },
+            { name: 'HUNTER', rarity: 'UNCOMMON', chance: 25, damage: 1.4, luck: 1.1, textColor: 'text-green-400' },
+            { name: 'MAGE', rarity: 'UNCOMMON', chance: 20, damage: 1.6, luck: 1.2, textColor: 'text-blue-400' },
+            { name: 'SLAYER', rarity: 'RARE', chance: 15, damage: 1.8, luck: 1.3, textColor: 'text-cyan-400' },
+            { name: 'SAIYAN', rarity: 'RARE', chance: 10, damage: 2.0, luck: 1.5, textColor: 'text-yellow-400' },
+            { name: 'AKATSUKI', rarity: 'EPIC', chance: 6, damage: 2.5, luck: 1.8, textColor: 'text-red-400' },
+            { name: 'HASHIRA', rarity: 'EPIC', chance: 5, damage: 3.0, luck: 2.0, textColor: 'text-orange-400' },
+            { name: 'DEMON LORD', rarity: 'LEGENDARY', chance: 3, damage: 4.0, luck: 2.5, textColor: 'text-red-500' },
+            { name: 'MONARCH', rarity: 'MYTHICAL', chance: 1.5, damage: 5.0, luck: 3.0, textColor: 'text-fuchsia-400' },
+            { name: 'SHADOW GARDEN', rarity: 'TRANSCENDENT', chance: 0.1, damage: 15.0, luck: 8.0, textColor: 'text-purple-400' }
+        ];
+
+        const ANIME_CHARACTERS = [
+            { name: 'NARUTO', damage: 100, price: 10000, rarity: 'RARE', emoji: '🍥', anime: 'NARUTO' },
+            { name: 'SASUKE', damage: 120, price: 12000, rarity: 'RARE', emoji: '⚡', anime: 'NARUTO' },
+            { name: 'LUFFY', damage: 150, price: 15000, rarity: 'RARE', emoji: '🏴‍☠️', anime: 'ONE PIECE' },
+            { name: 'GOKU', damage: 250, price: 30000, rarity: 'EPIC', emoji: '🐉', anime: 'DRAGON BALL' },
+            { name: 'GOJO', damage: 500, price: 80000, rarity: 'LEGENDARY', emoji: '👁️', anime: 'JUJUTSU' },
+            { name: 'SHADOW', damage: 2500, price: 1000000, rarity: 'DIVINE', emoji: '🌑', anime: 'SOLO LVL' }
+        ];
+
+        const SWORD_REWARDS = {
+            common: [
+                { name: 'RUSTY BLADE', damage: 50, rarity: 'COMMON', emoji: '🗡️' },
+                { name: 'IRON SWORD', damage: 100, rarity: 'RARE', emoji: '⚔️' }
+            ],
+            rare: [
+                { name: 'THUNDER EDGE', damage: 500, rarity: 'EPIC', emoji: '⚡' },
+                { name: 'DRAGON SLAYER', damage: 1000, rarity: 'LEGENDARY', emoji: '🐉' }
+            ],
+            divine: [
+                { name: 'ATOMIC BLADE', damage: 50000, rarity: 'DIVINE', emoji: '☢️' },
+                { name: 'VOID REAPER', damage: 100000, rarity: 'ATOMIC', emoji: '🌌' }
+            ]
+        };
+
+        const VIP_LEVELS = [
+            { level: 0, name: 'NONE', bonus: 0, color: 'gray' },
+            { level: 1, name: 'BRONZE', bonus: 5, color: 'orange-700' },
+            { level: 2, name: 'SILVER', bonus: 10, color: 'gray-400' },
+            { level: 3, name: 'GOLD', bonus: 20, color: 'yellow-500' },
+            { level: 4, name: 'PLATINUM', bonus: 28, color: 'cyan-400' },
+            { level: 5, name: 'DIAMOND', bonus: 35, color: 'blue-400' }
+        ];
+
+        const ALL_BOSSES = (() => {
+            const bosses = [];
+            const animeThemes = ['NARUTO', 'DBZ', 'ONE PIECE', 'BLEACH', 'DEMON', 'JUJUTSU', 'SOLO', 'AOT', 'FAIRY', 'BLACK'];
+            for (let i = 1; i <= 100; i++) {
+                for (let j = 1; j <= 100; j++) {
+                    const id = (i-1)*100 + j;
+                    const anime = animeThemes[(id-1) % animeThemes.length];
+                    const baseHp = Math.floor(5000 * Math.pow(1.25, i-1) * (1 + j/10));
+                    const baseReward = Math.floor(2500 * Math.pow(1.2, i-1));
+                    bosses.push({
+                        id: id,
+                        name: `BOSS LV${id}`,
+                        anime: anime,
+                        hp: baseHp,
+                        rewardCoins: baseReward,
+                        rewardGems: Math.floor(2 + i/5),
+                        tier: i
+                    });
+                }
+            }
+            return bosses;
+        })();
+
+        const MINING_BOSSES = [
+            { name: 'SLIME KING', emoji: '👾', hp: 25000, rewardCoins: 25000, rewardGems: 5, rewardStones: 25 },
+            { name: 'GOLEM', emoji: '🗿', hp: 75000, rewardCoins: 75000, rewardGems: 10, rewardStones: 50 },
+            { name: 'TITAN', emoji: '👹', hp: 250000, rewardCoins: 250000, rewardGems: 20, rewardStones: 100 },
+            { name: 'DRAGON', emoji: '🐉', hp: 1000000, rewardCoins: 1000000, rewardGems: 50, rewardStones: 250 }
+        ];
+
+        // ==================== COMPONENTE PRINCIPAL ====================
+        
+        function AnimeMasters() {
+            const [screen, setScreen] = useState('login');
+            const [player, setPlayer] = useState(null);
+            const [shop, setShop] = useState([]);
+            const [message, setMessage] = useState('');
+            const [showMessage, setShowMessage] = useState(false);
+            const [mineProgress, setMineProgress] = useState(0);
+            const [activeTab, setActiveTab] = useState('mine');
+            
+            const [username, setUsername] = useState('');
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [loginUsername, setLoginUsername] = useState('');
+            const [loginPassword, setLoginPassword] = useState('');
+            
+            const [inventoryTab, setInventoryTab] = useState('characters');
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [adminMinimized, setAdminMinimized] = useState(false);
+            const [adminSubTab, setAdminSubTab] = useState('users');
+            const [destroyedBlocks, setDestroyedBlocks] = useState([]);
+            const [mineBlocks, setMineBlocks] = useState([]);
+            
+            const [miningBoss, setMiningBoss] = useState(null);
+            const [miningBossHp, setMiningBossHp] = useState(0);
+            const [miningBossCooldown, setMiningBossCooldown] = useState(0);
+            
+            const [currentBossIndex, setCurrentBossIndex] = useState(1);
+            const [arenaBossHp, setArenaBossHp] = useState(0);
+            
+            const [vipCode, setVipCode] = useState('');
+            const [topPlayers, setTopPlayers] = useState({ coins: [], gems: [], level: [] });
+            
+            // Admin states
+            const [adminUsers, setAdminUsers] = useState([]);
+            const [adminVIPKeys, setAdminVIPKeys] = useState([]);
+            const [adminStats, setAdminStats] = useState({});
+            
+            // Admin forms
+            const [adminTarget, setAdminTarget] = useState('');
+            const [adminCoins, setAdminCoins] = useState('');
+            const [adminGems, setAdminGems] = useState('');
+            const [adminStones, setAdminStones] = useState('');
+            const [adminKeys, setAdminKeys] = useState('');
+            const [adminDamage, setAdminDamage] = useState('');
+            const [adminVipLevel, setAdminVipLevel] = useState('DIAMOND');
+            const [adminKeyQuantity, setAdminKeyQuantity] = useState(1);
+            const [generatedKeys, setGeneratedKeys] = useState([]);
+            const [newUsername, setNewUsername] = useState('');
+            const [newEmail, setNewEmail] = useState('');
+            const [newPassword, setNewPassword] = useState('');
+            const [newIsAdmin, setNewIsAdmin] = useState(false);
+            
+            const [adminEmail, setAdminEmail] = useState('');
+            const [adminPasswordLogin, setAdminPasswordLogin] = useState('');
+
+            // ==================== FUNÇÕES DO JOGO ====================
+            
+            const randomClan = () => {
+                const totalChance = CLANS.reduce((sum, clan) => sum + clan.chance, 0);
+                let roll = Math.random() * totalChance;
+                for (const clan of CLANS) {
+                    roll -= clan.chance;
+                    if (roll <= 0) return clan;
+                }
+                return CLANS[0];
+            };
+
+            const initMineBlocks = useCallback(() => {
+                const blocks = [];
+                for (let i = 0; i < 100; i++) {
+                    blocks.push({
+                        id: i,
+                        rare: Math.random() > 0.92,
+                        mythical: Math.random() > 0.98
+                    });
+                }
+                return blocks;
+            }, []);
+
+            const addNotification = (msg, type = 'info') => {
+                setMessage(msg);
+                setShowMessage(true);
+                setTimeout(() => setShowMessage(false), 3000);
+            };
+
+            // CALCULAR DANO TOTAL COM VIP
+            const calculateTotalDamage = useCallback(() => {
+                if (!player) return 10;
+                const charBonus = player.equippedCharacters?.reduce((sum, c) => sum + (c.damage || 0), 0) || 0;
+                const swordBonus = player.equippedSword?.damage || 0;
+                const baseDamage = player.damage || 10;
+                const multiplier = player.pickaxeMultiplier || 1;
+                const vipBonus = 1 + ((player.vipBonus || 0) / 100);
+                const total = (baseDamage + charBonus + swordBonus) * multiplier * vipBonus;
+                return Math.max(1, Math.floor(total));
+            }, [player]);
+
+            const getVIPCoinBonus = useCallback(() => {
+                return 1 + ((player?.vipBonus || 0) / 100);
+            }, [player]);
+
+            const updateRankings = useCallback(() => {
+                const users = getAllUsers();
+                const playersWithData = users.filter(u => u.gameData);
+                
+                const coinRank = [...playersWithData].sort((a, b) => (b.gameData?.coins || 0) - (a.gameData?.coins || 0)).slice(0, 10);
+                const gemRank = [...playersWithData].sort((a, b) => (b.gameData?.gems || 0) - (a.gameData?.gems || 0)).slice(0, 10);
+                const levelRank = [...playersWithData].sort((a, b) => (b.gameData?.pickaxeLevel || 0) - (a.gameData?.pickaxeLevel || 0)).slice(0, 10);
+                
+                setTopPlayers({ coins: coinRank, gems: gemRank, level: levelRank });
+            }, []);
+
+            const savePlayerToDB = useCallback(() => {
+                if (!player || !player.username) return;
+                
+                const gameDataToSave = {
+                    clan: player.clan,
+                    coins: player.coins,
+                    gems: player.gems,
+                    enchantStones: player.enchantStones,
+                    damage: player.damage,
+                    pickaxeLevel: player.pickaxeLevel,
+                    pickaxeMultiplier: player.pickaxeMultiplier,
+                    keys: player.keys,
+                    swords: player.swords,
+                    characters: player.characters,
+                    equippedCharacters: player.equippedCharacters,
+                    equippedSword: player.equippedSword,
+                    rebirths: player.rebirths,
+                    totalMined: player.totalMined,
+                    vipLevel: player.vipLevel || 0,
+                    vipBonus: player.vipBonus || 0,
+                    bossProgress: currentBossIndex
+                };
+                
+                updateUser(player.username, { gameData: gameDataToSave });
+                updateRankings();
+                loadAdminData();
+            }, [player, currentBossIndex, updateRankings]);
+
+            const loadPlayerFromDB = useCallback((userData) => {
+                if (userData.gameData) {
+                    const saved = userData.gameData;
+                    const vipLevelData = VIP_LEVELS.find(v => v.level === (saved.vipLevel || 0));
+                    return {
+                        username: userData.username,
+                        email: userData.email,
+                        clan: saved.clan || randomClan(),
+                        coins: saved.coins || 1000,
+                        gems: saved.gems || 10,
+                        enchantStones: saved.enchantStones || 5,
+                        damage: saved.damage || 10,
+                        pickaxeLevel: saved.pickaxeLevel || 1,
+                        pickaxeMultiplier: saved.pickaxeMultiplier || 1,
+                        keys: saved.keys || { common: 1, rare: 0, divine: 0 },
+                        swords: saved.swords || [],
+                        characters: saved.characters || [],
+                        equippedCharacters: saved.equippedCharacters || [],
+                        equippedSword: saved.equippedSword || null,
+                        rebirths: saved.rebirths || 0,
+                        totalMined: saved.totalMined || 0,
+                        vipLevel: saved.vipLevel || 0,
+                        vipBonus: vipLevelData?.bonus || 0,
+                        bossProgress: saved.bossProgress || 1
+                    };
+                }
+                const clan = randomClan();
+                return {
+                    username: userData.username,
+                    email: userData.email,
+                    clan: clan,
+                    coins: 1000,
+                    gems: 10,
+                    enchantStones: 5,
+                    damage: 10 * clan.damage,
+                    pickaxeLevel: 1,
+                    pickaxeMultiplier: 1,
+                    keys: { common: 1, rare: 0, divine: 0 },
+                    swords: [],
+                    characters: [],
+                    equippedCharacters: [],
+                    equippedSword: null,
+                    rebirths: 0,
+                    totalMined: 0,
+                    vipLevel: 0,
+                    vipBonus: 0,
+                    bossProgress: 1
+                };
+            }, []);
+
+            // ==================== ADMIN FUNCTIONS ====================
+            
+            const loadAdminData = () => {
+                const users = getAllUsers();
+                setAdminUsers(users);
+                const vipKeys = getAllVIPKeys();
+                setAdminVIPKeys(vipKeys);
+                const stats = getDatabaseStats();
+                setAdminStats(stats);
+            };
+
+            const adminEditUser = (username) => {
+                const user = findUserByUsername(username);
+                if (!user) return;
+                
+                const newCoins = prompt('Set Coins:', user.gameData?.coins || 0);
+                const newGems = prompt('Set Gems:', user.gameData?.gems || 0);
+                const newLevel = prompt('Set Pickaxe Level:', user.gameData?.pickaxeLevel || 0);
+                const newVip = prompt('Set VIP Level (0-5):', user.gameData?.vipLevel || 0);
+                const isAdmin = confirm('Make this user Admin?');
+                
+                const newVipNum = newVip ? parseInt(newVip) : user.gameData?.vipLevel;
+                const updatedGameData = {
+                    ...user.gameData,
+                    coins: newCoins ? parseInt(newCoins) : user.gameData?.coins,
+                    gems: newGems ? parseInt(newGems) : user.gameData?.gems,
+                    pickaxeLevel: newLevel ? parseInt(newLevel) : user.gameData?.pickaxeLevel,
+                    vipLevel: newVipNum,
+                    vipBonus: VIP_LEVELS.find(v => v.level === newVipNum)?.bonus || 0
+                };
+                
+                try {
+                    updateUser(username, { 
+                        gameData: updatedGameData,
+                        isAdmin: isAdmin
+                    });
+                    addNotification(`✅ User ${username} updated!`, 'success');
+                    loadAdminData();
+                    if (player && player.username === username) {
+                        const updated = findUserByUsername(username);
+                        const newGameData = loadPlayerFromDB(updated);
+                        setPlayer(newGameData);
+                    }
+                } catch (error) {
+                    addNotification(`❌ ${error.message}`, 'error');
+                }
+            };
+
+            const adminDeleteUser = (username) => {
+                if (confirm(`⚠️ DELETE USER "${username}"? This cannot be undone!`)) {
+                    try {
+                        deleteUser(username);
+                        addNotification(`✅ User ${username} deleted!`, 'success');
+                        loadAdminData();
+                    } catch (error) {
+                        addNotification(`❌ ${error.message}`, 'error');
+                    }
+                }
+            };
+
+            const adminGenerateKeys = () => {
+                const level = adminVipLevel;
+                const quantity = adminKeyQuantity;
+                const keys = generateMultipleVIPKeys(level, quantity, player?.username || 'ADMIN');
+                setGeneratedKeys(keys);
+                addNotification(`✅ Generated ${quantity} VIP ${level} keys!`, 'success');
+                loadAdminData();
+            };
+
+            const adminCreateUser = () => {
+                if (!newUsername || !newEmail || !newPassword) {
+                    addNotification('❌ All fields are required!', 'error');
+                    return;
+                }
+                if (newPassword.length < 4) {
+                    addNotification('❌ Password must be at least 4 characters!', 'error');
+                    return;
+                }
+                
+                try {
+                    const clan = { name: 'FIGHTER', damage: 1.1, luck: 1 };
+                    createUser({
+                        username: newUsername,
+                        email: newEmail,
+                        password: newPassword,
+                        isAdmin: newIsAdmin,
+                        gameData: {
+                            clan: clan,
+                            coins: 1000,
+                            gems: 10,
+                            enchantStones: 5,
+                            damage: 11,
+                            pickaxeLevel: 1,
+                            pickaxeMultiplier: 1,
+                            keys: { common: 1, rare: 0, divine: 0 },
+                            swords: [],
+                            characters: [],
+                            equippedCharacters: [],
+                            equippedSword: null,
+                            rebirths: 0,
+                            totalMined: 0,
+                            vipLevel: 0,
+                            vipBonus: 0
+                        }
+                    });
+                    addNotification(`✅ User "${newUsername}" created!`, 'success');
+                    setNewUsername('');
+                    setNewEmail('');
+                    setNewPassword('');
+                    setNewIsAdmin(false);
+                    loadAdminData();
+                } catch (error) {
+                    addNotification(`❌ ${error.message}`, 'error');
+                }
+            };
+
+            const adminGiveStats = () => {
+                if (!adminTarget) {
+                    addNotification('! DIGITE UM USUARIO !', 'error');
+                    return;
+                }
+                const user = findUserByUsername(adminTarget);
+                if (!user) {
+                    addNotification('! USUARIO NAO ENCONTRADO !', 'error');
+                    return;
+                }
+                
+                let gameData = user.gameData || {};
+                if (adminCoins) gameData.coins = parseInt(adminCoins);
+                if (adminGems) gameData.gems = parseInt(adminGems);
+                if (adminStones) gameData.enchantStones = parseInt(adminStones);
+                if (adminKeys) gameData.keys = { common: parseInt(adminKeys), rare: parseInt(adminKeys), divine: parseInt(adminKeys) };
+                if (adminDamage) gameData.damage = parseInt(adminDamage);
+                
+                updateUser(adminTarget, { gameData });
+                
+                if (player && player.username.toLowerCase() === adminTarget.toLowerCase()) {
+                    setPlayer(prev => ({
+                        ...prev,
+                        coins: adminCoins ? parseInt(adminCoins) : prev.coins,
+                        gems: adminGems ? parseInt(adminGems) : prev.gems,
+                        enchantStones: adminStones ? parseInt(adminStones) : prev.enchantStones,
+                        damage: adminDamage ? parseInt(adminDamage) : prev.damage
+                    }));
+                }
+                addNotification(`STATS UPDATED: ${adminTarget}!`, 'success');
+                loadAdminData();
+                
+                setAdminCoins('');
+                setAdminGems('');
+                setAdminStones('');
+                setAdminKeys('');
+                setAdminDamage('');
+            };
+
+            // ==================== JOGO - MINERAÇÃO ====================
+            
+            const checkSpawnMiningBoss = useCallback(() => {
+                if (miningBossCooldown > 0) {
+                    setMiningBossCooldown(prev => Math.max(0, prev - 1));
+                    return;
+                }
+                if (Math.random() < 0.03 && !miningBoss) {
+                    const bossIndex = Math.floor(Math.random() * MINING_BOSSES.length);
+                    const boss = { ...MINING_BOSSES[bossIndex] };
+                    setMiningBoss(boss);
+                    setMiningBossHp(boss.hp);
+                    addNotification(`! BOSS APPEARED ! ${boss.name}`, 'legendary');
+                }
+            }, [miningBoss, miningBossCooldown]);
+
+            const attackMiningBoss = () => {
+                if (!miningBoss || !player) return;
+                const damage = calculateTotalDamage();
+                const newHp = Math.max(0, miningBossHp - damage);
+                setMiningBossHp(newHp);
+                
+                if (newHp <= 0) {
+                    const vipBonus = getVIPCoinBonus();
+                    setPlayer(prev => ({
+                        ...prev,
+                        coins: prev.coins + Math.floor(miningBoss.rewardCoins * vipBonus),
+                        gems: prev.gems + miningBoss.rewardGems,
+                        enchantStones: prev.enchantStones + miningBoss.rewardStones
+                    }));
+                    addNotification(`VICTORY! +${formatNumber(Math.floor(miningBoss.rewardCoins * vipBonus))} GOLD`, 'legendary');
+                    setMiningBoss(null);
+                    setMiningBossCooldown(20);
+                    savePlayerToDB();
+                }
+            };
+
+            const resetMine = useCallback(() => {
+                setMineBlocks(initMineBlocks());
+                setDestroyedBlocks([]);
+                setMineProgress(0);
+            }, [initMineBlocks]);
+
+            const mine = (blockId) => {
+                if (!player) return;
+                if (destroyedBlocks.includes(blockId)) return;
+                if (miningBoss) {
+                    attackMiningBoss();
+                    return;
+                }
+                
+                const block = mineBlocks.find(b => b.id === blockId);
+                if (!block) return;
+
+                const clanLuck = player.clan.luck;
+                const isRare = block.rare;
+                const isMythical = block.mythical;
+                let baseCoins = 50;
+                if (isRare) baseCoins = 250;
+                if (isMythical) baseCoins = 1000;
+                
+                const totalDamage = calculateTotalDamage();
+                const vipBonus = getVIPCoinBonus();
+                const coinGain = Math.floor(baseCoins * (totalDamage / 100) * clanLuck * vipBonus);
+                
+                const gemDrop = Math.random() < (0.05 * clanLuck);
+                const stoneDrop = Math.random() < (0.3 * clanLuck);
+                const keyDrop = Math.random() < (0.03 * clanLuck);
+                
+                setPlayer(prev => ({
+                    ...prev,
+                    coins: prev.coins + coinGain,
+                    gems: prev.gems + (gemDrop ? 1 : 0),
+                    enchantStones: prev.enchantStones + (stoneDrop ? 1 : 0),
+                    keys: { ...prev.keys, common: prev.keys.common + (keyDrop ? 1 : 0) },
+                    totalMined: prev.totalMined + 1
+                }));
+                
+                setDestroyedBlocks(prev => [...prev, blockId]);
+            };
+
+            useEffect(() => {
+                if (destroyedBlocks.length >= 40) {
+                    addNotification('> MINA RESETADA <', 'info');
+                    resetMine();
+                }
+                const progress = (destroyedBlocks.length / 40) * 100;
+                setMineProgress(Math.min(progress, 100));
+            }, [destroyedBlocks, resetMine]);
+
+            // ==================== LOJA E INVENTÁRIO ====================
+            
+            const refreshShop = () => {
+                const shuffled = [...ANIME_CHARACTERS].sort(() => Math.random() - 0.5).slice(0, 4);
+                setShop(shuffled);
+            };
+
+            const buyCharacter = (character) => {
+                if (!player || player.coins < character.price) {
+                    addNotification('! NO GOLD !', 'error');
+                    return;
+                }
+                setPlayer(prev => ({
+                    ...prev,
+                    coins: prev.coins - character.price,
+                    characters: [...prev.characters, { ...character, id: Date.now() + Math.random() }]
+                }));
+                addNotification(`${character.name} ACQUIRED!`, 'success');
+                savePlayerToDB();
+            };
+
+            const equipCharacter = (character) => {
+                if (!player) return;
+                if (player.equippedCharacters.length >= 5) {
+                    addNotification('! TEAM FULL !', 'error');
+                    return;
+                }
+                setPlayer(prev => ({
+                    ...prev,
+                    characters: prev.characters.filter(c => c.id !== character.id),
+                    equippedCharacters: [...prev.equippedCharacters, character]
+                }));
+                addNotification(`${character.name} EQUIPPED! +${character.damage} DMG`, 'success');
+                savePlayerToDB();
+            };
+
+            const unequipCharacter = (character) => {
+                if (!player) return;
+                setPlayer(prev => ({
+                    ...prev,
+                    equippedCharacters: prev.equippedCharacters.filter(c => c.id !== character.id),
+                    characters: [...prev.characters, character]
+                }));
+                addNotification(`${character.name} REMOVED!`, 'info');
+                savePlayerToDB();
+            };
+
+            const equipSword = (sword) => {
+                if (!player) return;
+                setPlayer(prev => ({
+                    ...prev,
+                    equippedSword: sword,
+                    swords: prev.swords.filter(s => s.id !== sword.id)
+                }));
+                addNotification(`${sword.name} EQUIPPED! +${formatNumber(sword.damage)} DMG`, 'success');
+                savePlayerToDB();
+            };
+
+            const unequipSword = () => {
+                if (!player || !player.equippedSword) return;
+                setPlayer(prev => ({
+                    ...prev,
+                    swords: [...prev.swords, prev.equippedSword],
+                    equippedSword: null
+                }));
+                addNotification('SWORD REMOVED!', 'info');
+                savePlayerToDB();
+            };
+
+            const openKey = (type) => {
+                if (!player?.keys[type] || player.keys[type] <= 0) {
+                    addNotification('! NO KEYS !', 'error');
+                    return;
+                }
+                const rewards = SWORD_REWARDS[type];
+                const reward = rewards[Math.floor(Math.random() * rewards.length)];
+                setPlayer(prev => ({
+                    ...prev,
+                    swords: [...prev.swords, { ...reward, id: Date.now() + Math.random() }],
+                    keys: { ...prev.keys, [type]: prev.keys[type] - 1 }
+                }));
+                addNotification(`OBTAINED: ${reward.name}! +${formatNumber(reward.damage)} DMG`, 'legendary');
+                savePlayerToDB();
+            };
+
+            const enchantPickaxe = () => {
+                if (!player || player.enchantStones < 25) {
+                    addNotification('! NEED STONES !', 'error');
+                    return;
+                }
+                const success = Math.random() < 0.7;
+                if (success) {
+                    setPlayer(prev => ({
+                        ...prev,
+                        enchantStones: prev.enchantStones - 25,
+                        pickaxeLevel: prev.pickaxeLevel + 1,
+                        damage: prev.damage + 100,
+                        pickaxeMultiplier: prev.pickaxeMultiplier + 0.1
+                    }));
+                    addNotification('ENCHANT SUCCESS! +100 DMG', 'success');
+                } else {
+                    setPlayer(prev => ({
+                        ...prev,
+                        enchantStones: prev.enchantStones - 25
+                    }));
+                    addNotification('ENCHANT FAILED!', 'error');
+                }
+                savePlayerToDB();
+            };
+
+            const rerollClan = () => {
+                if (!player || player.gems < 50) {
+                    addNotification('! NEED GEMS !', 'error');
+                    return;
+                }
+                const newClan = randomClan();
+                setPlayer(prev => ({
+                    ...prev,
+                    gems: prev.gems - 50,
+                    clan: newClan,
+                    damage: prev.damage * newClan.damage
+                }));
+                addNotification(`CLAN: ${newClan.name}!`, 'success');
+                savePlayerToDB();
+            };
+
+            // ==================== ARENA ====================
+            
+            const attackArenaBoss = () => {
+                if (!player) return;
+                const currentBoss = ALL_BOSSES[currentBossIndex - 1];
+                if (!currentBoss) return;
+                
+                const swordDamage = player.equippedSword?.damage || 50;
+                const charBonus = player.equippedCharacters?.reduce((sum, c) => sum + (c.damage || 0), 0) || 0;
+                const vipBonus = 1 + ((player.vipBonus || 0) / 100);
+                const totalDamage = Math.floor((swordDamage + charBonus) * vipBonus);
+                const newHp = Math.max(0, arenaBossHp - totalDamage);
+                setArenaBossHp(newHp);
+                
+                if (newHp <= 0) {
+                    const coinBonus = getVIPCoinBonus();
+                    setPlayer(prev => ({
+                        ...prev,
+                        coins: prev.coins + Math.floor(currentBoss.rewardCoins * coinBonus),
+                        gems: prev.gems + currentBoss.rewardGems
+                    }));
+                    addNotification(`BOSS DEFEATED! +${formatNumber(Math.floor(currentBoss.rewardCoins * coinBonus))} GOLD`, 'legendary');
+                    const nextIndex = currentBossIndex + 1;
+                    setCurrentBossIndex(nextIndex);
+                    if (nextIndex <= ALL_BOSSES.length) {
+                        const nextBoss = ALL_BOSSES[nextIndex - 1];
+                        setArenaBossHp(nextBoss.hp);
+                    }
+                    savePlayerToDB();
+                }
+            };
+
+            // ==================== ACTIVATE VIP CORRIGIDO ====================
+            
+            const activateVIPCode = () => {
+                if (!vipCode || !player) {
+                    addNotification('! DIGITE UM CODIGO VIP !', 'error');
+                    return;
+                }
+                
+                const keyData = findVIPKey(vipCode.toUpperCase());
+                if (!keyData) {
+                    addNotification('! CODIGO VIP INVALIDO !', 'error');
+                    return;
+                }
+                
+                if (keyData.used) {
+                    addNotification('! CODIGO VIP JA UTILIZADO !', 'error');
+                    return;
+                }
+                
+                // O vipLevel já é um número (1-5)
+                const vipLevelNum = keyData.vipLevel;
+                
+                if (player.vipLevel >= vipLevelNum) {
+                    addNotification(`! VOCE JA POSSUI VIP NIVEL ${player.vipLevel} OU SUPERIOR !`, 'error');
+                    return;
+                }
+                
+                const vipData = VIP_LEVELS.find(v => v.level === vipLevelNum);
+                if (!vipData) {
+                    addNotification('! NIVEL VIP INVALIDO !', 'error');
+                    return;
+                }
+                
+                // Marcar key como usada
+                const usedLevel = useVIPKey(vipCode.toUpperCase(), player.username);
+                if (!usedLevel) {
+                    addNotification('! ERRO AO ATIVAR VIP !', 'error');
+                    return;
+                }
+                
+                // Atualizar o jogador com o novo VIP
+                setPlayer(prev => {
+                    const updatedPlayer = {
+                        ...prev,
+                        vipLevel: vipLevelNum,
+                        vipBonus: vipData.bonus
+                    };
+                    return updatedPlayer;
+                });
+                
+                // Salvar no banco de dados
+                const gameDataToSave = {
+                    clan: player.clan,
+                    coins: player.coins,
+                    gems: player.gems,
+                    enchantStones: player.enchantStones,
+                    damage: player.damage,
+                    pickaxeLevel: player.pickaxeLevel,
+                    pickaxeMultiplier: player.pickaxeMultiplier,
+                    keys: player.keys,
+                    swords: player.swords,
+                    characters: player.characters,
+                    equippedCharacters: player.equippedCharacters,
+                    equippedSword: player.equippedSword,
+                    rebirths: player.rebirths,
+                    totalMined: player.totalMined,
+                    vipLevel: vipLevelNum,
+                    vipBonus: vipData.bonus,
+                    bossProgress: currentBossIndex
+                };
+                updateUser(player.username, { gameData: gameDataToSave });
+                
+                addNotification(`✅ VIP ${vipData.name} ATIVADO! +${vipData.bonus}% EM TUDO!`, 'legendary');
+                setVipCode('');
+                loadAdminData();
+                
+                // Recarregar o player para atualizar os bônus
+                setTimeout(() => {
+                    const updatedUser = findUserByUsername(player.username);
+                    if (updatedUser) {
+                        const newGameData = loadPlayerFromDB(updatedUser);
+                        setPlayer(newGameData);
+                    }
+                    window.location.reload();
+                }, 500);
+            };
+
+            // ==================== LOGIN/REGISTRO ====================
+            
+            const register = () => {
+                if (!username || !email || !password) {
+                    addNotification('! FALTA DADOS !', 'error');
+                    return;
+                }
+                if (password.length < 4) {
+                    addNotification('! SENHA CURTA (MIN 4) !', 'error');
+                    return;
+                }
+                
+                try {
+                    const clan = randomClan();
+                    const newUser = {
+                        username: username.trim(),
+                        email: email,
+                        password: password,
+                        isAdmin: false,
+                        gameData: {
+                            clan: clan,
+                            coins: 1000,
+                            gems: 10,
+                            enchantStones: 5,
+                            damage: 10 * clan.damage,
+                            pickaxeLevel: 1,
+                            pickaxeMultiplier: 1,
+                            keys: { common: 1, rare: 0, divine: 0 },
+                            swords: [],
+                            characters: [],
+                            equippedCharacters: [],
+                            equippedSword: null,
+                            rebirths: 0,
+                            totalMined: 0,
+                            vipLevel: 0,
+                            vipBonus: 0,
+                            bossProgress: 1
+                        }
+                    };
+                    
+                    createUser(newUser);
+                    const gameData = loadPlayerFromDB(newUser);
+                    setPlayer(gameData);
+                    setMineBlocks(initMineBlocks());
+                    setCurrentBossIndex(1);
+                    setScreen('game');
+                    sessionStorage.setItem('animeMastersSession', JSON.stringify({ username: username.trim(), password }));
+                    addNotification(`WELCOME ${username}!`, 'success');
+                    savePlayerToDB();
+                    updateRankings();
+                    loadAdminData();
+                } catch (error) {
+                    addNotification(`❌ ${error.message}`, 'error');
+                }
+            };
+
+            const login = () => {
+                if (!loginUsername || !loginPassword) {
+                    addNotification('! DIGITE USUARIO E SENHA !', 'error');
+                    return;
+                }
+                
+                const user = findUserByUsername(loginUsername);
+                if (!user) {
+                    addNotification('! USUARIO NAO ENCONTRADO !', 'error');
+                    return;
+                }
+                
+                if (user.password !== loginPassword) {
+                    addNotification('! SENHA INCORRETA !', 'error');
+                    return;
+                }
+                
+                updateLastLogin(loginUsername);
+                
+                if (loginUsername === 'ADMIN' && loginPassword === 'ADMIN123') {
+                    setIsAdmin(true);
+                }
+                if (user.isAdmin) setIsAdmin(true);
+                
+                const gameData = loadPlayerFromDB(user);
+                setPlayer(gameData);
+                setMineBlocks(initMineBlocks());
+                setCurrentBossIndex(gameData.bossProgress || 1);
+                if (gameData.bossProgress && gameData.bossProgress <= ALL_BOSSES.length) {
+                    setArenaBossHp(ALL_BOSSES[gameData.bossProgress - 1]?.hp || 1000);
+                }
+                setScreen('game');
+                sessionStorage.setItem('animeMastersSession', JSON.stringify({ username: user.username, password: loginPassword }));
+                addNotification(`WELCOME BACK ${user.username}!`, 'success');
+                updateRankings();
+                loadAdminData();
+            };
+
+            const logout = () => {
+                savePlayerToDB();
+                sessionStorage.removeItem('animeMastersSession');
+                setPlayer(null);
+                setIsAdmin(false);
+                setScreen('login');
+                addNotification('> GOODBYE <', 'info');
+            };
+
+            // Admin login from game
+            const adminLoginFromGame = () => {
+                if (adminEmail === 'ADMIN@ANIMEMASTERS.COM' && adminPasswordLogin === 'ADMIN123') {
+                    setIsAdmin(true);
+                    addNotification('> ADMIN MODE ON <', 'success');
+                    loadAdminData();
+                } else {
+                    addNotification('! INVALID CREDENTIALS !', 'error');
+                }
+            };
+
+            // ==================== EFFECTS ====================
+            
+            useEffect(() => {
+                const currentSession = sessionStorage.getItem('animeMastersSession');
+                if (currentSession) {
+                    const session = JSON.parse(currentSession);
+                    const userData = findUserByUsername(session.username);
+                    if (userData && userData.password === session.password) {
+                        const gameData = loadPlayerFromDB(userData);
+                        setPlayer(gameData);
+                        setMineBlocks(initMineBlocks());
+                        setCurrentBossIndex(gameData.bossProgress || 1);
+                        setScreen('game');
+                        if (userData.isAdmin) setIsAdmin(true);
+                        if (session.username === 'ADMIN') setIsAdmin(true);
+                        updateRankings();
+                        loadAdminData();
+                    } else {
+                        sessionStorage.removeItem('animeMastersSession');
+                    }
+                }
+            }, [loadPlayerFromDB, initMineBlocks, updateRankings]);
+
+            useEffect(() => {
+                if (screen === 'game' && player) {
+                    const interval = setInterval(() => {
+                        savePlayerToDB();
+                    }, 10000);
+                    return () => clearInterval(interval);
+                }
+            }, [screen, player, savePlayerToDB]);
+
+            useEffect(() => {
+                if (screen === 'game') {
+                    refreshShop();
+                    const interval = setInterval(refreshShop, 60000);
+                    return () => clearInterval(interval);
+                }
+            }, [screen]);
+
+            useEffect(() => {
+                if (screen === 'game' && destroyedBlocks.length > 0) {
+                    checkSpawnMiningBoss();
+                }
+            }, [destroyedBlocks, checkSpawnMiningBoss]);
+
+            useEffect(() => {
+                if (screen === 'game' && currentBossIndex <= ALL_BOSSES.length) {
+                    const boss = ALL_BOSSES[currentBossIndex - 1];
+                    setArenaBossHp(boss.hp);
+                }
+            }, [currentBossIndex, screen]);
+
+            const currentArenaBoss = ALL_BOSSES[currentBossIndex - 1];
+            const bossHpPercent = (arenaBossHp / (currentArenaBoss?.hp || 1)) * 100;
+            const totalDamageDisplay = calculateTotalDamage();
+            const currentVIP = VIP_LEVELS.find(v => v.level === (player?.vipLevel || 0)) || VIP_LEVELS[0];
+
+            // ==================== TELA DE LOGIN ====================
+            
+            if (screen === 'login') {
+                return (
+                    <div className="min-h-screen bg-black flex items-center justify-center p-4 scanlines">
+                        <div className="relative z-10 w-full max-w-md">
+                            <div className="text-center mb-8">
+                                <div className="text-8xl mb-4 animate-pixel-bounce">⚔️</div>
+                                <h1 className="text-xl font-bold text-green-400 pixel-text-shadow">ANIME MASTERS</h1>
+                                <p className="text-gray-600 text-[8px] mt-4">[ PIXEL RPG v3.0 ]</p>
+                            </div>
+                            
+                            <div className="bg-black border-4 border-green-500 p-6 pixel-card">
+                                <div className="space-y-4">
+                                    <input type="text" placeholder="> USERNAME" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-3 text-green-400 font-mono text-xs focus:border-green-500 outline-none" onKeyPress={(e) => e.key === 'Enter' && login()} />
+                                    <input type="password" placeholder="> PASSWORD" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-3 text-green-400 font-mono text-xs focus:border-green-500 outline-none" onKeyPress={(e) => e.key === 'Enter' && login()} />
+                                    <button onClick={login} className="w-full bg-green-700 hover:bg-green-800 border-2 border-green-500 py-3 font-bold text-white pixel-btn transition text-xs">[ START GAME ]</button>
+                                    <div className="text-center text-gray-700 text-[8px]">[ OR ]</div>
+                                    <div className="space-y-3">
+                                        <input type="text" placeholder="> NEW USER" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-3 text-green-400 font-mono text-xs focus:border-green-500 outline-none" />
+                                        <input type="email" placeholder="> EMAIL" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-3 text-green-400 font-mono text-xs focus:border-green-500 outline-none" />
+                                        <input type="password" placeholder="> PASSWORD (MIN 4)" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-3 text-green-400 font-mono text-xs focus:border-green-500 outline-none" />
+                                        <button onClick={register} className="w-full bg-gray-800 hover:bg-gray-700 border-2 border-gray-600 py-3 font-bold text-white pixel-btn transition text-xs">[ CREATE ACCOUNT ]</button>
+                                    </div>
+                                </div>
+                                <div className="mt-4 pt-4 border-t-2 border-gray-800">
+                                    <div className="text-center text-gray-700 text-[8px] mb-3">[ ADMIN ACCESS ]</div>
+                                    <input type="text" placeholder="> ADMIN EMAIL" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value.toUpperCase())} className="w-full bg-gray-900 border-2 border-gray-700 p-2 mb-2 text-xs text-red-400 font-mono focus:border-red-500 outline-none" />
+                                    <input type="password" placeholder="> ADMIN PASSWORD" value={adminPasswordLogin} onChange={(e) => setAdminPasswordLogin(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-2 mb-2 text-xs text-red-400 font-mono focus:border-red-500 outline-none" />
+                                    <button onClick={adminLoginFromGame} className="w-full bg-red-900/50 border-2 border-red-700 py-2 text-red-400 text-[10px] hover:bg-red-800/50 transition">[ ADMIN LOGIN ]</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // ==================== TELA DO JOGO ====================
+            
+            return (
+                <div className="min-h-screen bg-black p-4 scanlines">
+                    {showMessage && (
+                        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-pixel-bounce">
+                            <div className={`border-4 px-4 py-2 font-mono text-[10px] pixel-card ${
+                                message.includes('!') ? 'bg-red-900 border-red-500 text-red-400' :
+                                message.includes('VICTORY') || message.includes('ACQUIRED') || message.includes('ATIVADO') ? 'bg-green-900 border-green-500 text-green-400' :
+                                'bg-blue-900 border-blue-500 text-blue-400'
+                            }`}>
+                                {message}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Header */}
+                    <div className="bg-black border-4 border-green-500 p-3 mb-4 pixel-card">
+                        <div className="flex flex-wrap justify-between items-center gap-2 text-[10px]">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-green-900 border-2 border-green-500 flex items-center justify-center text-lg">⚔️</div>
+                                <div>
+                                    <div className="font-bold text-green-400">{player?.username}</div>
+                                    <div className={`text-[6px] ${player?.clan?.textColor}`}>{player?.clan?.name}</div>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <div className="bg-gray-900 border border-yellow-600 px-2 py-1 text-[8px]"><span className="text-yellow-400">💰</span> {formatNumber(player?.coins)}</div>
+                                <div className="bg-gray-900 border border-purple-600 px-2 py-1 text-[8px]"><span className="text-purple-400">💎</span> {player?.gems}</div>
+                                <div className="bg-gray-900 border border-red-600 px-2 py-1 text-[8px]"><span className="text-red-400">⚔️</span> {formatNumber(totalDamageDisplay)}</div>
+                                <div className="bg-gray-900 border border-cyan-600 px-2 py-1 text-[8px]"><span className="text-cyan-400">🪨</span> {player?.enchantStones}</div>
+                                <div className="bg-gray-900 border border-orange-600 px-2 py-1 text-[8px]"><span className="text-orange-400">⛏️</span> LV{player?.pickaxeLevel}</div>
+                            </div>
+                            <button onClick={logout} className="bg-red-900 border-2 border-red-500 px-3 py-1 text-[8px] font-bold text-red-400 pixel-btn transition">[ EXIT ]</button>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-gray-800 flex justify-between items-center text-[6px]">
+                            <div className="flex gap-3">
+                                <span className="text-gray-500">BASE: {formatNumber(player?.damage || 0)}</span>
+                                <span className="text-gray-500">CHARS: +{player?.equippedCharacters?.reduce((s,c) => s + (c.damage||0), 0) || 0}</span>
+                                <span className="text-gray-500">SWORD: +{player?.equippedSword?.damage || 0}</span>
+                                <span className="text-gray-500">MULT: {player?.pickaxeMultiplier?.toFixed(1)}x</span>
+                            </div>
+                            <div className={`text-${currentVIP.color} font-bold`}>
+                                💎 VIP {currentVIP.name} +{currentVIP.bonus}%
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Tabs do Jogo */}
+                    <div className="flex gap-2 mb-4 flex-wrap">
+                        <button onClick={() => setActiveTab('mine')} className={`px-4 py-2 border-2 text-[10px] font-bold transition ${activeTab === 'mine' ? 'bg-green-900 border-green-500 text-green-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ MINE ]</button>
+                        <button onClick={() => setActiveTab('arena')} className={`px-4 py-2 border-2 text-[10px] font-bold transition ${activeTab === 'arena' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ ARENA {currentBossIndex}/100 ]</button>
+                        <button onClick={() => setActiveTab('inventory')} className={`px-4 py-2 border-2 text-[10px] font-bold transition ${activeTab === 'inventory' ? 'bg-purple-900 border-purple-500 text-purple-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ INVENTORY ]</button>
+                        <button onClick={() => setActiveTab('vip')} className={`px-4 py-2 border-2 text-[10px] font-bold transition ${activeTab === 'vip' ? 'bg-yellow-900 border-yellow-500 text-yellow-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ VIP ]</button>
+                        <button onClick={() => setActiveTab('ranking')} className={`px-4 py-2 border-2 text-[10px] font-bold transition ${activeTab === 'ranking' ? 'bg-blue-900 border-blue-500 text-blue-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ TOP ]</button>
+                        {isAdmin && (
+                            <button onClick={() => setActiveTab('admin')} className={`px-4 py-2 border-2 text-[10px] font-bold transition ${activeTab === 'admin' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ ADMIN ]</button>
+                        )}
+                    </div>
+                    
+                    {/* TAB MINE */}
+                    {activeTab === 'mine' && (
+                        <div className="grid grid-cols-12 gap-3">
+                            <div className="col-span-12 lg:col-span-3 space-y-3">
+                                <div className="bg-black border-2 border-yellow-600 p-3">
+                                    <div className="text-yellow-400 text-[10px] mb-2">[ KEYS ]</div>
+                                    <div className="space-y-1 text-[8px] text-gray-400"><div>⭐ COM: {player?.keys.common}</div><div>💜 RAR: {player?.keys.rare}</div><div>✨ DIV: {player?.keys.divine}</div></div>
+                                    <div className="space-y-1 mt-3">
+                                        <button onClick={() => openKey('common')} className="w-full bg-gray-800 border border-gray-600 py-1 text-[8px] font-bold pixel-btn">OPEN COM</button>
+                                        <button onClick={() => openKey('rare')} className="w-full bg-purple-900 border border-purple-600 py-1 text-[8px] font-bold pixel-btn">OPEN RARE</button>
+                                        <button onClick={() => openKey('divine')} className="w-full bg-yellow-900 border border-yellow-600 py-1 text-[8px] font-bold pixel-btn">OPEN DIV</button>
+                                    </div>
+                                </div>
+                                
+                                <div className="bg-black border-2 border-cyan-600 p-3">
+                                    <div className="text-cyan-400 text-[10px] mb-2">[ ENCHANT ]</div>
+                                    <div className="text-[6px] text-gray-500 mb-2">USE 25 STONES</div>
+                                    <button onClick={enchantPickaxe} className="w-full bg-cyan-900 border border-cyan-600 py-1 text-[8px] font-bold pixel-btn">ENCHANT +</button>
+                                    <div className="text-center text-[6px] text-gray-600 mt-2">MULT: {player?.pickaxeMultiplier?.toFixed(1)}x</div>
+                                </div>
+                                
+                                <div className="bg-black border-2 border-purple-600 p-3">
+                                    <div className="text-purple-400 text-[10px] mb-2">[ CLAN ]</div>
+                                    <div className={`text-xs font-bold ${player?.clan?.textColor}`}>{player?.clan?.name}</div>
+                                    <div className="text-[6px] text-gray-500">{player?.clan?.rarity} • {player?.clan?.damage}x DMG</div>
+                                    <button onClick={rerollClan} className="w-full bg-purple-900 border border-purple-600 py-1 mt-2 text-[8px] font-bold pixel-btn">REROLL (50💎)</button>
+                                </div>
+                            </div>
+                            
+                            <div className="col-span-12 lg:col-span-6 space-y-3">
+                                <div className="bg-black border-2 border-yellow-600 p-3">
+                                    <div className="flex justify-between mb-1 text-[8px]"><span className="text-yellow-400">[ MINE PROGRESS ]</span><span>{Math.floor(mineProgress)}%</span></div>
+                                    <div className="w-full bg-gray-800 h-2"><div className="bg-yellow-600 h-2 transition-all duration-300" style={{ width: `${mineProgress}%` }}></div></div>
+                                    <div className="text-[6px] text-gray-500 text-center mt-1">{40 - destroyedBlocks.length} BLOCKS TO RESET</div>
+                                </div>
+                                
+                                {miningBoss && (
+                                    <div className="bg-red-900 border-4 border-red-500 p-3 animate-pixel-pulse">
+                                        <div className="flex items-center justify-between">
+                                            <div><span className="text-2xl mr-2">{miningBoss.emoji}</span><span className="text-[10px] font-bold">{miningBoss.name}</span></div>
+                                            <div className="text-right text-[8px]">HP: {formatNumber(miningBossHp)}</div>
+                                        </div>
+                                        <div className="w-full bg-gray-800 h-2 mt-1"><div className="bg-red-500 h-2" style={{ width: `${(miningBossHp / miningBoss.hp) * 100}%` }}></div></div>
+                                        <button onClick={attackMiningBoss} className="w-full mt-2 bg-red-700 border border-red-400 py-1 text-[8px] font-bold pixel-btn">[ ATTACK BOSS ]</button>
+                                    </div>
+                                )}
+                                
+                                <div className="bg-black border-2 border-yellow-600 p-3">
+                                    <div className="text-yellow-400 text-[10px] mb-2">[ ANIME MINE ]</div>
+                                    <div className="grid grid-cols-10 gap-1">
+                                        {mineBlocks.map(block => {
+                                            const destroyed = destroyedBlocks.includes(block.id);
+                                            return (
+                                                <button key={block.id} onClick={() => mine(block.id)} disabled={destroyed}
+                                                    className={`aspect-square text-sm font-bold pixel-btn transition-all
+                                                        ${destroyed ? 'bg-gray-800 text-gray-600 cursor-not-allowed border border-gray-700' :
+                                                         block.mythical ? 'bg-purple-900 text-white border-2 border-purple-500 animate-pixel-pulse' :
+                                                        block.rare ? 'bg-yellow-900 text-yellow-400 border-2 border-yellow-600' :
+                                                        'bg-green-900 text-green-400 border border-green-700'}
+                                                    `}>
+                                                    {destroyed ? 'X' : block.mythical ? '★' : block.rare ? '✨' : '⛏️'}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="col-span-12 lg:col-span-3 space-y-3">
+                                <div className="bg-black border-2 border-green-600 p-3">
+                                    <div className="text-green-400 text-[10px] mb-2">[ SHOP ]</div>
+                                    <div className="space-y-2 max-h-80 overflow-auto">
+                                        {shop.map((char, i) => (
+                                            <div key={i} className="bg-gray-900 border border-gray-700 p-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xl">{char.emoji}</span>
+                                                    <div className="flex-1"><div className="text-[8px] font-bold">{char.name}</div><div className="text-[6px] text-green-400">+{char.damage} DMG</div></div>
+                                                    <button onClick={() => buyCharacter(char)} className="bg-green-900 border border-green-600 px-2 py-1 text-[6px] font-bold pixel-btn">{formatNumber(char.price)}💰</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* TAB ARENA */}
+                    {activeTab === 'arena' && currentArenaBoss && (
+                        <div className="bg-black border-4 border-red-500 p-6">
+                            <div className="text-center mb-4">
+                                <div className="text-7xl mb-2 animate-pixel-bounce">👾</div>
+                                <h2 className="text-sm font-bold text-red-400">{currentArenaBoss.name}</h2>
+                                <p className="text-[6px] text-gray-500">BOSS #{currentBossIndex}/100 • {currentArenaBoss.anime}</p>
+                                <div className="mt-3 bg-gray-900 border border-red-700 p-3">
+                                    <div className="flex justify-between text-[8px] mb-1"><span>❤️ HP</span><span>{formatNumber(arenaBossHp)} / {formatNumber(currentArenaBoss.hp)}</span></div>
+                                    <div className="w-full bg-gray-800 h-2"><div className="bg-red-500 h-2" style={{ width: `${bossHpPercent}%` }}></div></div>
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                <div className="bg-gray-900 border border-yellow-600 p-3 text-center">
+                                    <div className="text-yellow-400 text-[8px] mb-1">💰 REWARD</div>
+                                    <div className="text-[8px]">{formatNumber(currentArenaBoss.rewardCoins)} GOLD</div>
+                                    <div className="text-[6px]">+{currentArenaBoss.rewardGems} GEMS</div>
+                                    {player?.vipBonus > 0 && <div className="text-[6px] text-green-400">VIP +{player.vipBonus}%</div>}
+                                </div>
+                                <div className="bg-gray-900 border border-purple-600 p-3 text-center">
+                                    <div className="text-purple-400 text-[8px] mb-1">⚔️ YOUR DMG</div>
+                                    <div className="text-xs font-bold text-green-400">{formatNumber((player?.equippedSword?.damage || 50) + (player?.equippedCharacters?.reduce((s,c) => s + (c.damage||0), 0) || 0))}</div>
+                                    <div className="text-[6px] text-gray-500">SWORD: {player?.equippedSword?.name || 'NONE'}</div>
+                                    {player?.vipBonus > 0 && <div className="text-[6px] text-green-400">VIP +{player.vipBonus}%</div>}
+                                </div>
+                            </div>
+                            
+                            <button onClick={attackArenaBoss} className="w-full bg-red-700 border-4 border-red-500 py-3 text-xs font-bold pixel-btn transition">
+                                [ ATTACK BOSS ]
+                            </button>
+                        </div>
+                    )}
+                    
+                    {/* TAB INVENTORY */}
+                    {activeTab === 'inventory' && (
+                        <div className="bg-black border-4 border-purple-500 p-4">
+                            <div className="text-purple-400 text-xs mb-3">[ INVENTORY ]</div>
+                            <div className="flex gap-2 mb-4">
+                                <button onClick={() => setInventoryTab('characters')} className={`flex-1 py-2 border-2 text-[8px] font-bold transition ${inventoryTab === 'characters' ? 'bg-purple-900 border-purple-500 text-purple-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ CHARS ]</button>
+                                <button onClick={() => setInventoryTab('equipped')} className={`flex-1 py-2 border-2 text-[8px] font-bold transition ${inventoryTab === 'equipped' ? 'bg-purple-900 border-purple-500 text-purple-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ EQUIPPED ]</button>
+                                <button onClick={() => setInventoryTab('swords')} className={`flex-1 py-2 border-2 text-[8px] font-bold transition ${inventoryTab === 'swords' ? 'bg-purple-900 border-purple-500 text-purple-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ SWORDS ]</button>
+                            </div>
+                            <div className="space-y-2 max-h-96 overflow-auto">
+                                {inventoryTab === 'characters' && player?.characters?.map((char, i) => (
+                                    <div key={i} className="bg-gray-900 border border-gray-700 p-2"><div className="flex items-center justify-between"><div><div className="text-[8px] font-bold">{char.name}</div><div className="text-[6px] text-green-400">+{char.damage} DMG</div></div><button onClick={() => equipCharacter(char)} className="bg-purple-900 border border-purple-600 px-3 py-1 text-[6px] font-bold pixel-btn">[ EQUIP ]</button></div></div>
+                                ))}
+                                {inventoryTab === 'equipped' && (
+                                    <>
+                                        {player?.equippedCharacters?.map((char, i) => (
+                                            <div key={i} className="bg-purple-900/30 border border-purple-500 p-2"><div className="flex items-center justify-between"><div><div className="text-[8px] font-bold">{char.name}</div><div className="text-[6px] text-purple-400">+{char.damage} DMG</div></div><button onClick={() => unequipCharacter(char)} className="bg-red-900 border border-red-600 px-3 py-1 text-[6px] font-bold pixel-btn">[ REMOVE ]</button></div></div>
+                                        ))}
+                                        {player?.equippedSword && (
+                                            <div className="bg-red-900/30 border border-red-500 p-2"><div className="flex items-center justify-between"><div><div className="text-[8px] font-bold">⚔️ {player.equippedSword.name}</div><div className="text-[6px] text-red-400">+{formatNumber(player.equippedSword.damage)} DMG</div></div><button onClick={unequipSword} className="bg-red-900 border border-red-600 px-3 py-1 text-[6px] font-bold pixel-btn">[ REMOVE ]</button></div></div>
+                                        )}
+                                    </>
+                                )}
+                                {inventoryTab === 'swords' && player?.swords?.map((sword, i) => (
+                                    <div key={i} className="bg-gray-900 border border-red-700 p-2"><div className="flex items-center justify-between"><div><div className="text-[8px] font-bold">{sword.name}</div><div className={`text-[6px] ${sword.rarity === 'ATOMIC' ? 'text-white' : 'text-red-400'}`}>+{formatNumber(sword.damage)} DMG</div></div><button onClick={() => equipSword(sword)} className="bg-red-900 border border-red-600 px-3 py-1 text-[6px] font-bold pixel-btn">[ EQUIP ]</button></div></div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* TAB VIP */}
+                    {activeTab === 'vip' && (
+                        <div className="bg-black border-4 border-yellow-500 p-6">
+                            <div className="text-center mb-6">
+                                <div className="text-6xl mb-2">💎</div>
+                                <h2 className="text-sm font-bold text-yellow-400">VIP SYSTEM</h2>
+                                <p className="text-[6px] text-gray-500 mt-1">ACTIVATE VIP CODES TO GET PERMANENT BONUSES</p>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                {VIP_LEVELS.filter(v => v.level > 0).map((vip) => (
+                                    <div key={vip.level} className={`bg-gray-900 border-2 border-${vip.color} p-3 text-center ${player?.vipLevel >= vip.level ? 'bg-opacity-100' : 'bg-opacity-30'}`}>
+                                        <div className={`text-${vip.color} text-xs font-bold`}>{vip.name}</div>
+                                        <div className="text-yellow-400 text-lg font-bold mt-1">+{vip.bonus}%</div>
+                                        <div className="text-[6px] text-gray-500 mt-1">ALL STATS BONUS</div>
+                                        {player?.vipLevel >= vip.level && (
+                                            <div className="text-green-400 text-[6px] mt-2">✓ ACTIVATED</div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <div className="bg-gray-900 border-2 border-yellow-600 p-4">
+                                <div className="text-yellow-400 text-[10px] mb-3">[ ACTIVATE VIP CODE ]</div>
+                                <div className="flex gap-2">
+                                    <input type="text" placeholder="XXXX-XXXX-XXXX" value={vipCode} onChange={(e) => setVipCode(e.target.value.toUpperCase())} className="flex-1 bg-black border-2 border-gray-700 p-2 text-green-400 text-[8px] font-mono focus:border-yellow-500 outline-none" />
+                                    <button onClick={activateVIPCode} className="bg-yellow-800 border-2 border-yellow-600 px-4 py-2 text-[8px] font-bold pixel-btn">[ ACTIVATE ]</button>
+                                </div>
+                                <div className="text-[6px] text-gray-500 text-center mt-3">
+                                    * VIP bonuses stack with all game mechanics (mining, combat, rewards)
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* TAB RANKING */}
+                    {activeTab === 'ranking' && (
+                        <div className="bg-black border-4 border-blue-500 p-4">
+                            <div className="text-center mb-4">
+                                <div className="text-4xl mb-2">🏆</div>
+                                <h2 className="text-sm font-bold text-blue-400">GLOBAL RANKING</h2>
+                                <p className="text-[6px] text-gray-500 mt-1">TOP PLAYERS WORLDWIDE</p>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="bg-gray-900 border border-yellow-600 p-3">
+                                    <div className="text-yellow-400 text-[8px] text-center mb-2">💰 RICHEST PLAYERS</div>
+                                    <table className="ranking-table">
+                                        <thead><tr><th>#</th><th>PLAYER</th><th>COINS</th></tr></thead>
+                                        <tbody>
+                                            {topPlayers.coins.map((user, idx) => (
+                                                <tr key={idx} className={user.username === player?.username ? 'bg-yellow-900/30' : ''}>
+                                                    <td>{idx+1}</td><td>{user.username}</td><td>{formatNumber(user.gameData?.coins || 0)}</td>
+                                                </tr>
+                                            ))}
+                                            {topPlayers.coins.length === 0 && <tr><td colSpan="3" className="text-center text-gray-500">NO DATA</td></tr>}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                <div className="bg-gray-900 border border-purple-600 p-3">
+                                    <div className="text-purple-400 text-[8px] text-center mb-2">💎 GEM HOARDERS</div>
+                                    <table className="ranking-table">
+                                        <thead><tr><th>#</th><th>PLAYER</th><th>GEMS</th></tr></thead>
+                                        <tbody>
+                                            {topPlayers.gems.map((user, idx) => (
+                                                <tr key={idx} className={user.username === player?.username ? 'bg-yellow-900/30' : ''}>
+                                                    <td>{idx+1}</td><td>{user.username}</td><td>{user.gameData?.gems || 0}</td>
+                                                </tr>
+                                            ))}
+                                            {topPlayers.gems.length === 0 && <tr><td colSpan="3" className="text-center text-gray-500">NO DATA</td></tr>}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                <div className="bg-gray-900 border border-green-600 p-3">
+                                    <div className="text-green-400 text-[8px] text-center mb-2">⛏️ HIGHEST LEVEL</div>
+                                    <table className="ranking-table">
+                                        <thead><tr><th>#</th><th>PLAYER</th><th>LEVEL</th></tr></thead>
+                                        <tbody>
+                                            {topPlayers.level.map((user, idx) => (
+                                                <tr key={idx} className={user.username === player?.username ? 'bg-yellow-900/30' : ''}>
+                                                    <td>{idx+1}</td><td>{user.username}</td><td>{user.gameData?.pickaxeLevel || 0}</td>
+                                                </tr>
+                                            ))}
+                                            {topPlayers.level.length === 0 && <tr><td colSpan="3" className="text-center text-gray-500">NO DATA</td></tr>}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div className="text-center text-[6px] text-gray-500 mt-4">* Updated every 10 seconds</div>
+                        </div>
+                    )}
+                    
+                    {/* TAB ADMIN */}
+                    {activeTab === 'admin' && isAdmin && (
+                        <div className="bg-black border-4 border-red-500 p-4">
+                            <div className="flex gap-2 mb-4 flex-wrap">
+                                <button onClick={() => setAdminSubTab('users')} className={`px-3 py-1 border-2 text-[8px] font-bold transition ${adminSubTab === 'users' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ USERS ]</button>
+                                <button onClick={() => setAdminSubTab('vipkeys')} className={`px-3 py-1 border-2 text-[8px] font-bold transition ${adminSubTab === 'vipkeys' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ VIP KEYS ]</button>
+                                <button onClick={() => setAdminSubTab('create')} className={`px-3 py-1 border-2 text-[8px] font-bold transition ${adminSubTab === 'create' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ CREATE USER ]</button>
+                                <button onClick={() => setAdminSubTab('stats')} className={`px-3 py-1 border-2 text-[8px] font-bold transition ${adminSubTab === 'stats' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ STATS ]</button>
+                            </div>
+                            
+                            {adminSubTab === 'users' && (
+                                <div>
+                                    <div className="flex justify-between mb-3">
+                                        <span className="text-red-400 text-[10px]">📋 USER LIST</span>
+                                        <button onClick={() => exportUsersToCSV()} className="bg-blue-900 border border-blue-500 px-2 py-1 text-[6px] font-bold pixel-btn">[ EXPORT CSV ]</button>
+                                    </div>
+                                    <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                                        <table className="admin-table w-full text-left">
+                                            <thead><tr><th>ID</th><th>USERNAME</th><th>EMAIL</th><th>ADMIN</th><th>COINS</th><th>GEMS</th><th>LEVEL</th><th>VIP</th><th>ACTIONS</th></tr></thead>
+                                            <tbody>
+                                                {adminUsers.map(user => (
+                                                    <tr key={user.id}>
+                                                        <td>{user.id}</td>
+                                                        <td className="font-bold text-green-400">{user.username}</td>
+                                                        <td className="text-[8px]">{user.email}</td>
+                                                        <td>{user.isAdmin ? '👑' : '❌'}</td>
+                                                        <td>{formatNumber(user.gameData?.coins || 0)}</td>
+                                                        <td>{user.gameData?.gems || 0}</td>
+                                                        <td>{user.gameData?.pickaxeLevel || 0}</td>
+                                                        <td>{user.gameData?.vipLevel || 0}</td>
+                                                        <td>
+                                                            <button onClick={() => adminEditUser(user.username)} className="bg-blue-900 px-2 py-1 text-[6px] mr-1 pixel-btn">EDIT</button>
+                                                            <button onClick={() => adminDeleteUser(user.username)} className="bg-red-900 px-2 py-1 text-[6px] pixel-btn">DEL</button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {adminSubTab === 'vipkeys' && (
+                                <div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="bg-gray-900 border border-yellow-600 p-3">
+                                            <span className="text-yellow-400 text-[8px]">🔑 GENERATE VIP KEYS</span>
+                                            <div className="mt-2 space-y-2">
+                                                <select value={adminVipLevel} onChange={(e) => setAdminVipLevel(e.target.value)} className="w-full bg-black border border-gray-700 p-2 text-[8px] text-yellow-400">
+                                                    <option>BRONZE</option><option>SILVER</option><option>GOLD</option><option>PLATINUM</option><option>DIAMOND</option>
+                                                </select>
+                                                <input type="number" min="1" max="100" value={adminKeyQuantity} onChange={(e) => setAdminKeyQuantity(Math.min(100, parseInt(e.target.value) || 1))} className="w-full bg-black border border-gray-700 p-2 text-[8px] text-yellow-400" />
+                                                <button onClick={adminGenerateKeys} className="w-full bg-yellow-800 border border-yellow-600 py-2 text-[8px] font-bold pixel-btn">[ GENERATE KEYS ]</button>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-900 border border-green-600 p-3">
+                                            <span className="text-green-400 text-[8px]">📜 GENERATED KEYS</span>
+                                            <div className="mt-2 max-h-48 overflow-y-auto space-y-1">
+                                                {generatedKeys.map((key, i) => (
+                                                    <div key={i} className="bg-black border border-gray-700 p-1 text-[6px] text-yellow-400 font-mono break-all">{key}</div>
+                                                ))}
+                                                {generatedKeys.length === 0 && <div className="text-gray-500 text-[6px] text-center">No keys generated yet</div>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 bg-gray-900 border border-purple-600 p-3">
+                                        <span className="text-purple-400 text-[8px]">📋 ALL VIP KEYS</span>
+                                        <div className="mt-2 max-h-48 overflow-y-auto">
+                                            <table className="admin-table w-full text-left text-[8px]">
+                                                <thead><tr><th>KEY</th><th>LEVEL</th><th>STATUS</th><th>USED BY</th></tr></thead>
+                                                <tbody>
+                                                    {adminVIPKeys.slice().reverse().map((key, i) => (
+                                                        <tr key={i}><td className="font-mono">{key.key}</td><td>{key.vipLevel}</td><td className={key.used ? 'text-red-400' : 'text-green-400'}>{key.used ? 'USED' : 'ACTIVE'}</td><td>{key.usedBy || '-'}</td></tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {adminSubTab === 'create' && (
+                                <div className="max-w-md mx-auto">
+                                    <div className="space-y-3">
+                                        <input type="text" placeholder="USERNAME" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-2 text-xs text-green-400" />
+                                        <input type="email" placeholder="EMAIL" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-2 text-xs text-green-400" />
+                                        <input type="password" placeholder="PASSWORD" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-2 text-xs text-green-400" />
+                                        <label className="flex items-center gap-2"><input type="checkbox" checked={newIsAdmin} onChange={(e) => setNewIsAdmin(e.target.checked)} /><span className="text-[8px] text-gray-400">Admin User</span></label>
+                                        <button onClick={adminCreateUser} className="w-full bg-blue-800 border border-blue-500 py-2 text-[8px] font-bold pixel-btn">[ CREATE USER ]</button>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {adminSubTab === 'stats' && (
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    <div className="bg-gray-900 border border-green-600 p-3 text-center"><div className="text-green-400 text-[8px]">TOTAL USERS</div><div className="text-lg font-bold">{adminStats.totalUsers || 0}</div></div>
+                                    <div className="bg-gray-900 border border-yellow-600 p-3 text-center"><div className="text-yellow-400 text-[8px]">VIP KEYS</div><div className="text-lg font-bold">{adminStats.totalVIPKeys || 0}</div></div>
+                                    <div className="bg-gray-900 border border-purple-600 p-3 text-center"><div className="text-purple-400 text-[8px]">USED KEYS</div><div className="text-lg font-bold">{adminStats.usedVIPKeys || 0}</div></div>
+                                    <div className="bg-gray-900 border border-blue-600 p-3 text-center"><div className="text-blue-400 text-[8px]">ADMINS</div><div className="text-lg font-bold">{adminStats.adminUsers || 0}</div></div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    
+                    {/* Admin Panel Flutuante */}
+                    {isAdmin && activeTab !== 'admin' && (
+                        <div className={`fixed bottom-2 right-2 bg-black border-4 border-red-500 z-50 transition-all duration-200 ${adminMinimized ? 'admin-minimized' : 'admin-expanded'}`}>
+                            <div className="bg-red-900 px-3 py-2 flex justify-between items-center cursor-pointer" onClick={() => setAdminMinimized(!adminMinimized)}>
+                                <span className="text-red-400 text-[8px] font-bold">[ ADMIN PANEL ]</span>
+                                <button className="text-red-400 text-[10px] font-bold pixel-btn">{adminMinimized ? '[ + ]' : '[ - ]'}</button>
+                            </div>
+                            {!adminMinimized && (
+                                <div className="p-3">
+                                    <div className="space-y-1">
+                                        <input type="text" placeholder="> TARGET USER" value={adminTarget} onChange={(e) => setAdminTarget(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-1 text-[6px] text-red-400 font-mono" />
+                                        <input type="number" placeholder="> COINS" value={adminCoins} onChange={(e) => setAdminCoins(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-1 text-[6px] text-red-400 font-mono" />
+                                        <input type="number" placeholder="> GEMS" value={adminGems} onChange={(e) => setAdminGems(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-1 text-[6px] text-red-400 font-mono" />
+                                        <input type="number" placeholder="> STONES" value={adminStones} onChange={(e) => setAdminStones(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-1 text-[6px] text-red-400 font-mono" />
+                                        <input type="number" placeholder="> KEYS" value={adminKeys} onChange={(e) => setAdminKeys(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-1 text-[6px] text-red-400 font-mono" />
+                                        <input type="number" placeholder="> DAMAGE" value={adminDamage} onChange={(e) => setAdminDamage(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-1 text-[6px] text-red-400 font-mono" />
+                                        <button onClick={adminGiveStats} className="w-full bg-red-900 border border-red-600 py-1 text-[6px] font-bold pixel-btn mt-2">[ APPLY ]</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById("root")).render(<AnimeMasters />);
+    </script>
+</body>
+</html>

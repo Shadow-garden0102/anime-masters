@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Anime Masters</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="database.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        * {
+            font-family: 'Press Start 2P', monospace;
+        }
+        .pixel-border {
+            border-style: solid;
+            border-width: 4px;
+            border-color: #333;
+        }
+        .pixel-btn {
+            transition: all 0.05s linear;
+        }
+        .pixel-btn:active {
+            transform: translate(2px, 2px);
+        }
+        .table-pixel th, .table-pixel td {
+            border: 1px solid #333;
+            padding: 8px;
+            font-size: 10px;
+        }
+        .table-pixel th {
+            background: #1a1a1a;
+            color: #ffd700;
+        }
+        .table-pixel tr:hover {
+            background: #2a2a2a;
+        }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #000;
+            border: 4px solid #ffd700;
+            max-width: 550px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .modal-content input, .modal-content select {
+            background-color: #1a1a1a;
+            border: 1px solid #333;
+            color: #ffd700;
+            padding: 8px;
+            font-size: 10px;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .modal-content label {
+            font-size: 8px;
+            color: #888;
+            display: block;
+            margin-bottom: 5px;
+            margin-top: 10px;
+        }
+        .close-modal {
+            float: right;
+            font-size: 20px;
+            cursor: pointer;
+            color: #ff4444;
+        }
+        .close-modal:hover {
+            color: #ff8888;
+        }
+        .modal-title {
+            font-size: 12px;
+            color: #ffd700;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        /* Login screen */
+        .login-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #000, #1a1a1a);
+            z-index: 2000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .login-box {
+            background: #000;
+            border: 4px solid #ffd700;
+            padding: 30px;
+            width: 350px;
+            text-align: center;
+        }
+        .login-box input {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #ffd700;
+            padding: 12px;
+            font-size: 12px;
+            width: 100%;
+            margin: 15px 0;
+            text-align: center;
+        }
+        .login-box button {
+            background: #ffd700;
+            color: #000;
+            border: none;
+            padding: 12px;
+            font-size: 12px;
+            width: 100%;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .login-box button:hover {
+            background: #ffaa00;
+        }
+        .error-msg {
+            color: #ff4444;
+            font-size: 10px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body class="bg-black text-green-400 p-6">
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-box pixel-border">
+            <div class="text-5xl mb-4">👑</div>
+            <h2 class="text-yellow-400 text-sm mb-4">ADMIN ACCESS</h2>
+            <input type="password" id="adminPassword" placeholder="> ENTER PASSWORD" onkeypress="if(event.key==='Enter') checkLogin()">
+            <button onclick="checkLogin()">[ LOGIN ]</button>
+            <div id="loginError" class="error-msg"></div>
+        </div>
+    </div>
+    
+    <!-- Main Content (hidden until login) -->
+    <div id="mainContent" style="display: none;">
+        <div class="max-w-7xl mx-auto">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <div class="text-6xl mb-4">👑</div>
+                <h1 class="text-2xl font-bold text-red-400">ADMIN PANEL</h1>
+                <p class="text-gray-500 text-xs mt-2">[ DATABASE MANAGEMENT SYSTEM ]</p>
+            </div>
+            
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+                <div class="bg-gray-900 border-2 border-green-500 p-4 text-center">
+                    <div class="text-green-400 text-sm">👥 USERS</div>
+                    <div class="text-2xl font-bold" id="totalUsers">0</div>
+                </div>
+                <div class="bg-gray-900 border-2 border-yellow-500 p-4 text-center">
+                    <div class="text-yellow-400 text-sm">🔑 VIP KEYS</div>
+                    <div class="text-2xl font-bold" id="totalKeys">0</div>
+                </div>
+                <div class="bg-gray-900 border-2 border-blue-500 p-4 text-center">
+                    <div class="text-blue-400 text-sm">✓ USED KEYS</div>
+                    <div class="text-2xl font-bold" id="usedKeys">0</div>
+                </div>
+                <div class="bg-gray-900 border-2 border-purple-500 p-4 text-center">
+                    <div class="text-purple-400 text-sm">👑 ADMINS</div>
+                    <div class="text-2xl font-bold" id="adminCount">0</div>
+                </div>
+                <div class="bg-gray-900 border-2 border-orange-500 p-4 text-center">
+                    <div class="text-orange-400 text-sm">💰 TOTAL COINS</div>
+                    <div class="text-2xl font-bold" id="totalCoins">0</div>
+                </div>
+            </div>
+            
+            <!-- Tabs -->
+            <div class="flex gap-2 mb-6 flex-wrap">
+                <button onclick="showTab('users')" class="px-4 py-2 bg-green-900 border-2 border-green-500 text-xs font-bold pixel-btn" id="tabUsersBtn">[ USERS ]</button>
+                <button onclick="showTab('vip')" class="px-4 py-2 bg-gray-800 border-2 border-gray-600 text-xs font-bold pixel-btn" id="tabVipBtn">[ VIP KEYS ]</button>
+                <button onclick="showTab('create')" class="px-4 py-2 bg-gray-800 border-2 border-gray-600 text-xs font-bold pixel-btn" id="tabCreateBtn">[ CREATE USER ]</button>
+                <button onclick="showTab('backup')" class="px-4 py-2 bg-gray-800 border-2 border-gray-600 text-xs font-bold pixel-btn" id="tabBackupBtn">[ BACKUP ]</button>
+                <button onclick="logout()" class="px-4 py-2 bg-red-900 border-2 border-red-500 text-xs font-bold pixel-btn ml-auto">[ LOGOUT ]</button>
+                <button onclick="window.location.href='index.html'" class="px-4 py-2 bg-purple-900 border-2 border-purple-500 text-xs font-bold pixel-btn">[ BACK TO GAME ]</button>
+            </div>
+            
+            <!-- TAB: USERS -->
+            <div id="tabUsers" class="bg-black border-4 border-green-500 p-6">
+                <div class="flex justify-between mb-4">
+                    <h2 class="text-green-400 text-sm">📋 USER LIST</h2>
+                    <div class="flex gap-2">
+                        <input type="text" id="searchUser" placeholder="> SEARCH" class="bg-gray-900 border border-gray-700 p-2 text-xs text-green-400 w-48" onkeyup="searchUsers()">
+                        <button onclick="exportUsers()" class="bg-blue-900 border border-blue-500 px-3 py-2 text-xs font-bold pixel-btn">[ EXPORT CSV ]</button>
+                        <button onclick="refreshUsers()" class="bg-gray-700 border border-gray-500 px-3 py-2 text-xs font-bold pixel-btn">[ REFRESH ]</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table class="table-pixel w-full text-left">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>USERNAME</th>
+                                <th>EMAIL</th>
+                                <th>ADMIN</th>
+                                <th>COINS</th>
+                                <th>GEMS</th>
+                                <th>LEVEL</th>
+                                <th>VIP</th>
+                                <th>CLAN</th>
+                                <th>CREATED</th>
+                                <th>LAST LOGIN</th>
+                                <th>ACTIONS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <tr><td colspan="12" class="text-center">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- TAB: VIP KEYS -->
+            <div id="tabVip" class="bg-black border-4 border-yellow-500 p-6 hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-gray-900 border-2 border-yellow-600 p-4">
+                        <h3 class="text-yellow-400 text-sm mb-3">🔑 GENERATE VIP KEYS</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-gray-400 text-xs block mb-1">VIP LEVEL</label>
+                                <select id="generateVipLevel" class="w-full bg-black border border-gray-700 p-2 text-xs text-yellow-400">
+                                    <option value="BRONZE">BRONZE (5%)</option>
+                                    <option value="SILVER">SILVER (10%)</option>
+                                    <option value="GOLD">GOLD (20%)</option>
+                                    <option value="PLATINUM">PLATINUM (28%)</option>
+                                    <option value="DIAMOND">DIAMOND (35%)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-gray-400 text-xs block mb-1">QUANTITY</label>
+                                <input type="number" id="generateQuantity" value="1" min="1" max="100" class="w-full bg-black border border-gray-700 p-2 text-xs text-yellow-400">
+                            </div>
+                            <button onclick="generateKeys()" class="w-full bg-yellow-800 border-2 border-yellow-600 py-2 text-xs font-bold pixel-btn">[ GENERATE KEYS ]</button>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-900 border-2 border-yellow-600 p-4">
+                        <h3 class="text-yellow-400 text-sm mb-3">📜 VIP KEYS LIST</h3>
+                        <div class="max-h-96 overflow-y-auto">
+                            <table class="table-pixel w-full text-left text-xs">
+                                <thead>
+                                    <tr>
+                                        <th>KEY</th>
+                                        <th>LEVEL</th>
+                                        <th>STATUS</th>
+                                        <th>USED BY</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vipKeysTableBody">
+                                    <tr><td colspan="4" class="text-center">Loading...</td></tr>
+                                </tbody>
+                             </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- TAB: CREATE USER -->
+            <div id="tabCreate" class="bg-black border-4 border-blue-500 p-6 hidden">
+                <div class="max-w-md mx-auto">
+                    <h2 class="text-blue-400 text-sm mb-4 text-center">➕ CREATE NEW USER</h2>
+                    <div class="space-y-4">
+                        <input type="text" id="newUsername" placeholder="USERNAME" class="w-full bg-gray-900 border border-gray-700 p-3 text-xs text-green-400">
+                        <input type="email" id="newEmail" placeholder="EMAIL" class="w-full bg-gray-900 border border-gray-700 p-3 text-xs text-green-400">
+                        <input type="password" id="newPassword" placeholder="PASSWORD" class="w-full bg-gray-900 border border-gray-700 p-3 text-xs text-green-400">
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" id="newIsAdmin" class="w-4 h-4">
+                            <span class="text-xs text-gray-400">Admin User</span>
+                        </label>
+                        <button onclick="createNewUser()" class="w-full bg-blue-800 border-2 border-blue-500 py-3 text-xs font-bold pixel-btn">[ CREATE ACCOUNT ]</button>
+                    </div>
+                    <div id="createResult" class="mt-4 text-center text-xs hidden"></div>
+                </div>
+            </div>
+            
+            <!-- TAB: BACKUP -->
+            <div id="tabBackup" class="bg-black border-4 border-orange-500 p-6 hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-gray-900 border-2 border-orange-600 p-4">
+                        <h3 class="text-orange-400 text-sm mb-3">💾 BACKUP</h3>
+                        <button onclick="backupData()" class="w-full bg-orange-800 border-2 border-orange-500 py-2 text-xs font-bold pixel-btn mb-3">[ DOWNLOAD BACKUP ]</button>
+                        <div class="text-gray-500 text-[10px] text-center">Exporta todos os dados em JSON</div>
+                    </div>
+                    
+                    <div class="bg-gray-900 border-2 border-orange-600 p-4">
+                        <h3 class="text-orange-400 text-sm mb-3">🔄 RESTORE BACKUP</h3>
+                        <input type="file" id="restoreFile" accept=".json" class="w-full bg-black border border-gray-700 p-2 text-xs text-yellow-400 mb-3">
+                        <button onclick="restoreData()" class="w-full bg-yellow-800 border-2 border-yellow-500 py-2 text-xs font-bold pixel-btn">[ RESTORE FROM BACKUP ]</button>
+                    </div>
+                    
+                    <div class="bg-gray-900 border-2 border-red-600 p-4">
+                        <h3 class="text-red-400 text-sm mb-3">⚠️ DANGER ZONE</h3>
+                        <button onclick="cleanOldUsers()" class="w-full bg-red-800 border-2 border-red-500 py-2 text-xs font-bold pixel-btn mb-3">[ CLEAN INACTIVE USERS (30+ DAYS) ]</button>
+                        <button onclick="resetAllData()" class="w-full bg-red-900 border-2 border-red-700 py-2 text-xs font-bold pixel-btn">[ RESET ALL DATA ]</button>
+                        <div class="text-gray-500 text-[8px] text-center mt-2">⚠️ THIS CANNOT BE UNDONE!</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- EDIT USER MODAL -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal()">&times;</span>
+            <div class="modal-title">✏️ EDIT USER</div>
+            <div id="modalContent"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Admin password
+        const ADMIN_PASSWORD = 'Cebola24';
+        let allUsers = [];
+        let allVIPKeys = [];
+        let currentEditUser = null;
+        
+        // Lista de Clans disponíveis
+        const CLANS_LIST = [
+            { name: 'FIGHTER', rarity: 'COMMON', damage: 1.1, luck: 1 },
+            { name: 'SWORDSMAN', rarity: 'COMMON', damage: 1.2, luck: 1 },
+            { name: 'HUNTER', rarity: 'UNCOMMON', damage: 1.4, luck: 1.1 },
+            { name: 'MAGE', rarity: 'UNCOMMON', damage: 1.6, luck: 1.2 },
+            { name: 'SLAYER', rarity: 'RARE', damage: 1.8, luck: 1.3 },
+            { name: 'SAIYAN', rarity: 'RARE', damage: 2.0, luck: 1.5 },
+            { name: 'AKATSUKI', rarity: 'EPIC', damage: 2.5, luck: 1.8 },
+            { name: 'HASHIRA', rarity: 'EPIC', damage: 3.0, luck: 2.0 },
+            { name: 'DEMON LORD', rarity: 'LEGENDARY', damage: 4.0, luck: 2.5 },
+            { name: 'MONARCH', rarity: 'MYTHICAL', damage: 5.0, luck: 3.0 },
+            { name: 'SHADOW GARDEN', rarity: 'TRANSCENDENT', damage: 15.0, luck: 8.0 }
+        ];
+        
+        // Mapeamento de níveis VIP
+        const VIP_LEVEL_NUMBER = {
+            'BRONZE': 1, 'SILVER': 2, 'GOLD': 3, 'PLATINUM': 4, 'DIAMOND': 5
+        };
+        const VIP_LEVEL_NAME = { 1: 'BRONZE', 2: 'SILVER', 3: 'GOLD', 4: 'PLATINUM', 5: 'DIAMOND' };
+        const VIP_BONUS = { 0: 0, 1: 5, 2: 10, 3: 20, 4: 28, 5: 35 };
+        
+        // Login check
+        function checkLogin() {
+            const password = document.getElementById('adminPassword').value;
+            if (password === ADMIN_PASSWORD) {
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                init();
+            } else {
+                document.getElementById('loginError').textContent = '❌ WRONG PASSWORD!';
+            }
+        }
+        
+        function logout() {
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('mainContent').style.display = 'none';
+            document.getElementById('adminPassword').value = '';
+            document.getElementById('loginError').textContent = '';
+        }
+        
+        // Initialize
+        function init() {
+            updateStats();
+            loadUsers();
+            loadVIPKeys();
+        }
+        
+        function showTab(tab) {
+            document.getElementById('tabUsers').classList.add('hidden');
+            document.getElementById('tabVip').classList.add('hidden');
+            document.getElementById('tabCreate').classList.add('hidden');
+            document.getElementById('tabBackup').classList.add('hidden');
+            
+            document.getElementById(`tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`).classList.remove('hidden');
+            
+            const tabs = ['users', 'vip', 'create', 'backup'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}Btn`);
+                if (btn) {
+                    if (t === tab) {
+                        btn.classList.remove('bg-gray-800', 'border-gray-600');
+                        btn.classList.add('bg-green-900', 'border-green-500');
+                    } else {
+                        btn.classList.remove('bg-green-900', 'border-green-500');
+                        btn.classList.add('bg-gray-800', 'border-gray-600');
+                    }
+                }
+            });
+            
+            if (tab === 'users') loadUsers();
+            if (tab === 'vip') loadVIPKeys();
+        }
+        
+        function updateStats() {
+            const stats = window.AnimeDB.getDatabaseStats();
+            document.getElementById('totalUsers').textContent = stats.totalUsers;
+            document.getElementById('totalKeys').textContent = stats.totalVIPKeys;
+            document.getElementById('usedKeys').textContent = stats.usedVIPKeys;
+            document.getElementById('adminCount').textContent = stats.adminUsers;
+            
+            const totalCoins = allUsers.reduce((sum, u) => sum + (u.gameData?.coins || 0), 0);
+            document.getElementById('totalCoins').textContent = formatNumber(totalCoins);
+        }
+        
+        function loadUsers() {
+            allUsers = window.AnimeDB.getAllUsers();
+            renderUsersTable(allUsers);
+            updateStats();
+        }
+        
+        function renderUsersTable(users) {
+            const tbody = document.getElementById('usersTableBody');
+            if (!users.length) {
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center text-gray-500">NO USERS FOUND</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = users.map(user => `
+                <tr>
+                    <td>${user.id}</td>
+                    <td class="font-bold text-green-400">${user.username}</td>
+                    <td class="text-xs">${user.email}</td>
+                    <td>${user.isAdmin ? '👑 YES' : '❌ NO'}</td>
+                    <td>${formatNumber(user.gameData?.coins || 0)}</td>
+                    <td>${user.gameData?.gems || 0}</td>
+                    <td>${user.gameData?.pickaxeLevel || 0}</td>
+                    <td>${user.gameData?.vipLevel || 0}</td>
+                    <td>${user.gameData?.clan?.name || 'FIGHTER'}</td>
+                    <td class="text-xs">${new Date(user.createdAt).toLocaleDateString()}</td>
+                    <td class="text-xs">${user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'NEVER'}</td>
+                    <td>
+                        <button onclick="openEditModal('${user.username}')" class="bg-blue-900 px-2 py-1 text-xs mr-1 pixel-btn">[ EDIT ]</button>
+                        <button onclick="deleteUserConfirm('${user.username}')" class="bg-red-900 px-2 py-1 text-xs pixel-btn">[ DEL ]</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        function searchUsers() {
+            const searchTerm = document.getElementById('searchUser').value.toLowerCase();
+            const filtered = allUsers.filter(u => 
+                u.username.toLowerCase().includes(searchTerm) || 
+                u.email.toLowerCase().includes(searchTerm)
+            );
+            renderUsersTable(filtered);
+        }
+        
+        function refreshUsers() {
+            loadUsers();
+            document.getElementById('searchUser').value = '';
+        }
+        
+        // OPEN EDIT MODAL
+        function openEditModal(username) {
+            currentEditUser = window.AnimeDB.findUserByUsername(username);
+            if (!currentEditUser) return;
+            
+            const gameData = currentEditUser.gameData || {};
+            const currentClan = gameData.clan?.name || 'FIGHTER';
+            
+            const modalHtml = `
+                <label>USERNAME</label>
+                <input type="text" id="editUsername" value="${currentEditUser.username}" disabled style="opacity:0.7;">
+                
+                <label>EMAIL</label>
+                <input type="email" id="editEmail" value="${currentEditUser.email}">
+                
+                <label>PASSWORD</label>
+                <input type="password" id="editPassword" placeholder="Leave blank to keep same">
+                
+                <label>COINS</label>
+                <input type="number" id="editCoins" value="${gameData.coins || 0}">
+                
+                <label>GEMS</label>
+                <input type="number" id="editGems" value="${gameData.gems || 0}">
+                
+                <label>ENCHANT STONES</label>
+                <input type="number" id="editStones" value="${gameData.enchantStones || 0}">
+                
+                <label>PICKAXE LEVEL</label>
+                <input type="number" id="editLevel" value="${gameData.pickaxeLevel || 1}">
+                
+                <label>DAMAGE</label>
+                <input type="number" id="editDamage" value="${gameData.damage || 10}">
+                
+                <label>VIP LEVEL (0-5)</label>
+                <select id="editVipLevel">
+                    <option value="0" ${gameData.vipLevel === 0 ? 'selected' : ''}>0 - NONE (0%)</option>
+                    <option value="1" ${gameData.vipLevel === 1 ? 'selected' : ''}>1 - BRONZE (+5%)</option>
+                    <option value="2" ${gameData.vipLevel === 2 ? 'selected' : ''}>2 - SILVER (+10%)</option>
+                    <option value="3" ${gameData.vipLevel === 3 ? 'selected' : ''}>3 - GOLD (+20%)</option>
+                    <option value="4" ${gameData.vipLevel === 4 ? 'selected' : ''}>4 - PLATINUM (+28%)</option>
+                    <option value="5" ${gameData.vipLevel === 5 ? 'selected' : ''}>5 - DIAMOND (+35%)</option>
+                </select>
+                
+                <label>CLAN</label>
+                <select id="editClan">
+                    ${CLANS_LIST.map(clan => `
+                        <option value="${clan.name}" ${currentClan === clan.name ? 'selected' : ''}>
+                            ${clan.name} (${clan.rarity}) - ${clan.damage}x DMG
+                        </option>
+                    `).join('')}
+                </select>
+                
+                <label>COMMON KEYS</label>
+                <input type="number" id="editCommonKeys" value="${gameData.keys?.common || 0}">
+                
+                <label>RARE KEYS</label>
+                <input type="number" id="editRareKeys" value="${gameData.keys?.rare || 0}">
+                
+                <label>DIVINE KEYS</label>
+                <input type="number" id="editDivineKeys" value="${gameData.keys?.divine || 0}">
+                
+                <label style="margin-top:15px;">
+                    <input type="checkbox" id="editIsAdmin" ${currentEditUser.isAdmin ? 'checked' : ''}>
+                    <span style="display:inline; margin-left:10px;">ADMIN USER</span>
+                </label>
+                
+                <button onclick="saveUserEdit()" class="w-full bg-green-800 border-2 border-green-600 py-2 text-xs font-bold pixel-btn mt-4">[ SAVE CHANGES ]</button>
+            `;
+            
+            document.getElementById('modalContent').innerHTML = modalHtml;
+            document.getElementById('editModal').style.display = 'flex';
+        }
+        
+        function closeModal() {
+            document.getElementById('editModal').style.display = 'none';
+            currentEditUser = null;
+        }
+        
+        function saveUserEdit() {
+            if (!currentEditUser) return;
+            
+            const selectedClan = CLANS_LIST.find(c => c.name === document.getElementById('editClan').value);
+            const newVipLevel = parseInt(document.getElementById('editVipLevel').value);
+            
+            const updatedGameData = {
+                ...currentEditUser.gameData,
+                email: document.getElementById('editEmail').value,
+                coins: parseInt(document.getElementById('editCoins').value) || 0,
+                gems: parseInt(document.getElementById('editGems').value) || 0,
+                enchantStones: parseInt(document.getElementById('editStones').value) || 0,
+                pickaxeLevel: parseInt(document.getElementById('editLevel').value) || 1,
+                damage: parseInt(document.getElementById('editDamage').value) || 10,
+                vipLevel: newVipLevel,
+                vipBonus: VIP_BONUS[newVipLevel] || 0,
+                clan: selectedClan,
+                keys: {
+                    common: parseInt(document.getElementById('editCommonKeys').value) || 0,
+                    rare: parseInt(document.getElementById('editRareKeys').value) || 0,
+                    divine: parseInt(document.getElementById('editDivineKeys').value) || 0
+                }
+            };
+            
+            const newPassword = document.getElementById('editPassword').value;
+            const updateData = { gameData: updatedGameData };
+            
+            if (newPassword) {
+                updateData.password = newPassword;
+            }
+            
+            updateData.isAdmin = document.getElementById('editIsAdmin').checked;
+            
+            try {
+                window.AnimeDB.updateUser(currentEditUser.username, updateData);
+                alert(`✅ User ${currentEditUser.username} updated successfully!`);
+                closeModal();
+                loadUsers();
+            } catch (error) {
+                alert(`❌ Error: ${error.message}`);
+            }
+        }
+        
+        function deleteUserConfirm(username) {
+            if (confirm(`⚠️ DELETE USER "${username}"? This cannot be undone!`)) {
+                window.AnimeDB.deleteUser(username);
+                alert(`✅ User ${username} deleted!`);
+                loadUsers();
+            }
+        }
+        
+        function exportUsers() {
+            window.AnimeDB.exportUsersToCSV();
+        }
+        
+        function generateKeys() {
+            const levelName = document.getElementById('generateVipLevel').value;
+            const quantity = parseInt(document.getElementById('generateQuantity').value);
+            const levelNumber = VIP_LEVEL_NUMBER[levelName] || 5;
+            
+            const keys = [];
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            
+            for (let i = 0; i < quantity; i++) {
+                let key = `VIP-${levelName}-`;
+                for (let j = 0; j < 12; j++) {
+                    key += chars[Math.floor(Math.random() * chars.length)];
+                    if (j === 3 || j === 7) key += '-';
+                }
+                
+                const db = window.AnimeDB.initDatabase();
+                if (!db.vipKeys) db.vipKeys = [];
+                
+                db.vipKeys.push({
+                    key: key,
+                    vipLevel: levelNumber,
+                    generatedBy: 'ADMIN',
+                    generatedAt: new Date().toISOString(),
+                    used: false,
+                    usedBy: null,
+                    usedAt: null
+                });
+                
+                window.AnimeDB.saveDatabase(db);
+                keys.push(key);
+            }
+            
+            alert(`✅ Generated ${quantity} VIP ${levelName} keys!\n\nFirst key: ${keys[0]}`);
+            loadVIPKeys();
+        }
+        
+        function loadVIPKeys() {
+            const db = window.AnimeDB.initDatabase();
+            allVIPKeys = db.vipKeys || [];
+            const tbody = document.getElementById('vipKeysTableBody');
+            
+            if (!allVIPKeys.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-500">NO VIP KEYS</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = allVIPKeys.slice().reverse().map(key => {
+                const levelName = VIP_LEVEL_NAME[key.vipLevel] || key.vipLevel;
+                return `
+                    <tr>
+                        <td class="font-mono text-xs">${key.key}</td>
+                        <td>${levelName} (${key.vipLevel})</td>
+                        <td class="${key.used ? 'text-red-400' : 'text-green-400'}">${key.used ? 'USED' : 'ACTIVE'}</td>
+                        <td class="text-xs">${key.usedBy || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function createNewUser() {
+            const username = document.getElementById('newUsername').value.trim();
+            const email = document.getElementById('newEmail').value.trim();
+            const password = document.getElementById('newPassword').value;
+            const isAdmin = document.getElementById('newIsAdmin').checked;
+            const resultDiv = document.getElementById('createResult');
+            
+            if (!username || !email || !password) {
+                resultDiv.textContent = '❌ All fields are required!';
+                resultDiv.className = 'mt-4 text-center text-xs text-red-400';
+                resultDiv.classList.remove('hidden');
+                return;
+            }
+            
+            if (password.length < 4) {
+                resultDiv.textContent = '❌ Password must be at least 4 characters!';
+                resultDiv.className = 'mt-4 text-center text-xs text-red-400';
+                resultDiv.classList.remove('hidden');
+                return;
+            }
+            
+            try {
+                const defaultClan = { name: 'FIGHTER', damage: 1.1, luck: 1 };
+                window.AnimeDB.createUser({
+                    username,
+                    email,
+                    password,
+                    isAdmin,
+                    gameData: {
+                        clan: defaultClan,
+                        coins: 1000,
+                        gems: 10,
+                        enchantStones: 5,
+                        damage: 11,
+                        pickaxeLevel: 1,
+                        pickaxeMultiplier: 1,
+                        keys: { common: 1, rare: 0, divine: 0 },
+                        swords: [],
+                        characters: [],
+                        equippedCharacters: [],
+                        equippedSword: null,
+                        rebirths: 0,
+                        totalMined: 0,
+                        vipLevel: 0,
+                        vipBonus: 0
+                    }
+                });
+                
+                resultDiv.textContent = `✅ User "${username}" created successfully!`;
+                resultDiv.className = 'mt-4 text-center text-xs text-green-400';
+                resultDiv.classList.remove('hidden');
+                
+                document.getElementById('newUsername').value = '';
+                document.getElementById('newEmail').value = '';
+                document.getElementById('newPassword').value = '';
+                document.getElementById('newIsAdmin').checked = false;
+                
+                loadUsers();
+                updateStats();
+                
+                setTimeout(() => resultDiv.classList.add('hidden'), 3000);
+            } catch (error) {
+                resultDiv.textContent = `❌ ${error.message}`;
+                resultDiv.className = 'mt-4 text-center text-xs text-red-400';
+                resultDiv.classList.remove('hidden');
+            }
+        }
+        
+        function backupData() {
+            window.AnimeDB.backupDatabase();
+        }
+        
+        function restoreData() {
+            const fileInput = document.getElementById('restoreFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a backup file!');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const success = window.AnimeDB.restoreDatabase(e.target.result);
+                if (success) {
+                    alert('✅ Database restored successfully!');
+                    window.location.reload();
+                } else {
+                    alert('❌ Failed to restore backup!');
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        function cleanOldUsers() {
+            if (confirm('⚠️ Remove users inactive for more than 30 days?')) {
+                const remaining = window.AnimeDB.cleanOldUsers(30);
+                alert(`✅ Cleaned! ${remaining} users remaining.`);
+                loadUsers();
+                updateStats();
+            }
+        }
+        
+        function resetAllData() {
+            if (confirm('⚠️⚠️⚠️ RESET ALL DATA? This will delete EVERYTHING! ⚠️⚠️⚠️')) {
+                if (confirm('LAST CHANCE! ARE YOU ABSOLUTELY SURE?')) {
+                    localStorage.removeItem('animeMastersDB');
+                    alert('Database reset! Page will reload.');
+                    window.location.reload();
+                }
+            }
+        }
+        
+        function formatNumber(num) {
+            if (num === undefined || num === null) return '0';
+            if (num >= 1e12) return (num / 1e12).toFixed(1) + 'T';
+            if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+            if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+            if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+            return num.toString();
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('editModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>
