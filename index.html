@@ -144,7 +144,7 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
 
-        // ==================== BANCO DE DADOS ====================
+        // ==================== BANCO DE DADOS (EMBUTIDO) ====================
         
         function initDatabase() {
             if (!localStorage.getItem('animeMastersDB')) {
@@ -165,11 +165,13 @@
         }
 
         function findUserByUsername(username) {
+            if (!username) return null;
             const db = initDatabase();
             return db.users.find(u => u.username.toLowerCase() === username.toLowerCase());
         }
 
         function findUserByEmail(email) {
+            if (!email) return null;
             const db = initDatabase();
             return db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
         }
@@ -213,19 +215,6 @@
             return db.users[index];
         }
 
-        function deleteUser(username) {
-            const db = initDatabase();
-            const index = db.users.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
-            
-            if (index === -1) {
-                throw new Error('Usuário não encontrado!');
-            }
-            
-            const deleted = db.users.splice(index, 1)[0];
-            saveDatabase(db);
-            return deleted;
-        }
-
         function getAllUsers() {
             const db = initDatabase();
             return db.users;
@@ -235,52 +224,50 @@
             return updateUser(username, { lastLogin: new Date().toISOString() });
         }
 
+        function getDatabaseStats() {
+            const db = initDatabase();
+            const totalCoins = db.users.reduce((sum, u) => sum + (u.gameData?.coins || 0), 0);
+            return {
+                totalUsers: db.users.length,
+                totalVIPKeys: db.vipKeys?.length || 0,
+                usedVIPKeys: db.vipKeys?.filter(k => k.used).length || 0,
+                adminUsers: db.users.filter(u => u.isAdmin).length,
+                totalCoins: totalCoins
+            };
+        }
+
         // Mapeamento de níveis VIP
         const VIP_LEVEL_MAP = {
-            'BRONZE': 1,
-            'SILVER': 2,
-            'GOLD': 3,
-            'PLATINUM': 4,
-            'DIAMOND': 5
+            'BRONZE': 1, 'SILVER': 2, 'GOLD': 3, 'PLATINUM': 4, 'DIAMOND': 5
         };
-
-        function generateVIPKey(vipLevel, generatedBy) {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let key = `VIP-${vipLevel.toUpperCase()}-`;
-            for (let i = 0; i < 12; i++) {
-                key += chars[Math.floor(Math.random() * chars.length)];
-                if (i === 3 || i === 7) key += '-';
-            }
-            return key;
-        }
-
-        function saveVIPKey(key, vipLevel, generatedBy) {
-            const db = initDatabase();
-            if (!db.vipKeys) db.vipKeys = [];
-            
-            // Converte o nível para número
-            const levelNumber = typeof vipLevel === 'string' ? VIP_LEVEL_MAP[vipLevel.toUpperCase()] || 5 : vipLevel;
-            
-            db.vipKeys.push({
-                key: key,
-                vipLevel: levelNumber,
-                vipLevelName: typeof vipLevel === 'string' ? vipLevel.toUpperCase() : vipLevel,
-                generatedBy: generatedBy,
-                generatedAt: new Date().toISOString(),
-                used: false,
-                usedBy: null,
-                usedAt: null
-            });
-            
-            saveDatabase(db);
-            return key;
-        }
-
+        
+        const VIP_LEVEL_NAME = { 1: 'BRONZE', 2: 'SILVER', 3: 'GOLD', 4: 'PLATINUM', 5: 'DIAMOND' };
+        
         function generateMultipleVIPKeys(vipLevel, quantity, generatedBy) {
             const keys = [];
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            const levelNumber = VIP_LEVEL_MAP[vipLevel.toUpperCase()] || 5;
+            
             for (let i = 0; i < quantity; i++) {
-                const key = generateVIPKey(vipLevel, generatedBy);
-                saveVIPKey(key, vipLevel, generatedBy);
+                let key = `VIP-${vipLevel.toUpperCase()}-`;
+                for (let j = 0; j < 12; j++) {
+                    key += chars[Math.floor(Math.random() * chars.length)];
+                    if (j === 3 || j === 7) key += '-';
+                }
+                
+                const db = initDatabase();
+                if (!db.vipKeys) db.vipKeys = [];
+                
+                db.vipKeys.push({
+                    key: key,
+                    vipLevel: levelNumber,
+                    generatedBy: generatedBy,
+                    generatedAt: new Date().toISOString(),
+                    used: false,
+                    usedBy: null,
+                    usedAt: null
+                });
+                saveDatabase(db);
                 keys.push(key);
             }
             return keys;
@@ -304,51 +291,7 @@
             keyData.usedAt = new Date().toISOString();
             
             saveDatabase(db);
-            return keyData.vipLevel; // Retorna o nível como número
-        }
-
-        function getAllVIPKeys() {
-            const db = initDatabase();
-            return db.vipKeys || [];
-        }
-
-        function getDatabaseStats() {
-            const db = initDatabase();
-            const totalCoins = db.users.reduce((sum, u) => sum + (u.gameData?.coins || 0), 0);
-            return {
-                totalUsers: db.users.length,
-                totalVIPKeys: db.vipKeys?.length || 0,
-                usedVIPKeys: db.vipKeys?.filter(k => k.used).length || 0,
-                adminUsers: db.users.filter(u => u.isAdmin).length,
-                totalCoins: totalCoins
-            };
-        }
-
-        function exportUsersToCSV() {
-            const users = getAllUsers();
-            const headers = ['ID', 'Username', 'Email', 'Admin', 'Coins', 'Gems', 'Level', 'VIP Level', 'Created At', 'Last Login'];
-            
-            const rows = users.map(u => [
-                u.id,
-                u.username,
-                u.email,
-                u.isAdmin ? 'Sim' : 'Não',
-                u.gameData?.coins || 0,
-                u.gameData?.gems || 0,
-                u.gameData?.pickaxeLevel || 0,
-                u.gameData?.vipLevel || 0,
-                u.createdAt,
-                u.lastLogin || 'Nunca'
-            ]);
-            
-            const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', `usuarios_${new Date().toISOString().slice(0,19)}.csv`);
-            link.click();
-            URL.revokeObjectURL(url);
+            return keyData.vipLevel;
         }
 
         // ==================== FORMATAÇÃO ====================
@@ -529,7 +472,6 @@
                 setTimeout(() => setShowMessage(false), 3000);
             };
 
-            // CALCULAR DANO TOTAL COM VIP
             const calculateTotalDamage = useCallback(() => {
                 if (!player) return 10;
                 const charBonus = player.equippedCharacters?.reduce((sum, c) => sum + (c.damage || 0), 0) || 0;
@@ -639,115 +581,10 @@
             const loadAdminData = () => {
                 const users = getAllUsers();
                 setAdminUsers(users);
-                const vipKeys = getAllVIPKeys();
-                setAdminVIPKeys(vipKeys);
+                const db = initDatabase();
+                setAdminVIPKeys(db.vipKeys || []);
                 const stats = getDatabaseStats();
                 setAdminStats(stats);
-            };
-
-            const adminEditUser = (username) => {
-                const user = findUserByUsername(username);
-                if (!user) return;
-                
-                const newCoins = prompt('Set Coins:', user.gameData?.coins || 0);
-                const newGems = prompt('Set Gems:', user.gameData?.gems || 0);
-                const newLevel = prompt('Set Pickaxe Level:', user.gameData?.pickaxeLevel || 0);
-                const newVip = prompt('Set VIP Level (0-5):', user.gameData?.vipLevel || 0);
-                const isAdmin = confirm('Make this user Admin?');
-                
-                const newVipNum = newVip ? parseInt(newVip) : user.gameData?.vipLevel;
-                const updatedGameData = {
-                    ...user.gameData,
-                    coins: newCoins ? parseInt(newCoins) : user.gameData?.coins,
-                    gems: newGems ? parseInt(newGems) : user.gameData?.gems,
-                    pickaxeLevel: newLevel ? parseInt(newLevel) : user.gameData?.pickaxeLevel,
-                    vipLevel: newVipNum,
-                    vipBonus: VIP_LEVELS.find(v => v.level === newVipNum)?.bonus || 0
-                };
-                
-                try {
-                    updateUser(username, { 
-                        gameData: updatedGameData,
-                        isAdmin: isAdmin
-                    });
-                    addNotification(`✅ User ${username} updated!`, 'success');
-                    loadAdminData();
-                    if (player && player.username === username) {
-                        const updated = findUserByUsername(username);
-                        const newGameData = loadPlayerFromDB(updated);
-                        setPlayer(newGameData);
-                    }
-                } catch (error) {
-                    addNotification(`❌ ${error.message}`, 'error');
-                }
-            };
-
-            const adminDeleteUser = (username) => {
-                if (confirm(`⚠️ DELETE USER "${username}"? This cannot be undone!`)) {
-                    try {
-                        deleteUser(username);
-                        addNotification(`✅ User ${username} deleted!`, 'success');
-                        loadAdminData();
-                    } catch (error) {
-                        addNotification(`❌ ${error.message}`, 'error');
-                    }
-                }
-            };
-
-            const adminGenerateKeys = () => {
-                const level = adminVipLevel;
-                const quantity = adminKeyQuantity;
-                const keys = generateMultipleVIPKeys(level, quantity, player?.username || 'ADMIN');
-                setGeneratedKeys(keys);
-                addNotification(`✅ Generated ${quantity} VIP ${level} keys!`, 'success');
-                loadAdminData();
-            };
-
-            const adminCreateUser = () => {
-                if (!newUsername || !newEmail || !newPassword) {
-                    addNotification('❌ All fields are required!', 'error');
-                    return;
-                }
-                if (newPassword.length < 4) {
-                    addNotification('❌ Password must be at least 4 characters!', 'error');
-                    return;
-                }
-                
-                try {
-                    const clan = { name: 'FIGHTER', damage: 1.1, luck: 1 };
-                    createUser({
-                        username: newUsername,
-                        email: newEmail,
-                        password: newPassword,
-                        isAdmin: newIsAdmin,
-                        gameData: {
-                            clan: clan,
-                            coins: 1000,
-                            gems: 10,
-                            enchantStones: 5,
-                            damage: 11,
-                            pickaxeLevel: 1,
-                            pickaxeMultiplier: 1,
-                            keys: { common: 1, rare: 0, divine: 0 },
-                            swords: [],
-                            characters: [],
-                            equippedCharacters: [],
-                            equippedSword: null,
-                            rebirths: 0,
-                            totalMined: 0,
-                            vipLevel: 0,
-                            vipBonus: 0
-                        }
-                    });
-                    addNotification(`✅ User "${newUsername}" created!`, 'success');
-                    setNewUsername('');
-                    setNewEmail('');
-                    setNewPassword('');
-                    setNewIsAdmin(false);
-                    loadAdminData();
-                } catch (error) {
-                    addNotification(`❌ ${error.message}`, 'error');
-                }
             };
 
             const adminGiveStats = () => {
@@ -787,6 +624,15 @@
                 setAdminStones('');
                 setAdminKeys('');
                 setAdminDamage('');
+            };
+
+            const adminGenerateKeys = () => {
+                const level = adminVipLevel;
+                const quantity = adminKeyQuantity;
+                const keys = generateMultipleVIPKeys(level, quantity, player?.username || 'ADMIN');
+                setGeneratedKeys(keys);
+                addNotification(`✅ Generated ${quantity} VIP ${level} keys!`, 'success');
+                loadAdminData();
             };
 
             // ==================== JOGO - MINERAÇÃO ====================
@@ -1037,7 +883,7 @@
                 }
             };
 
-            // ==================== ACTIVATE VIP CORRIGIDO ====================
+            // ==================== ACTIVATE VIP ====================
             
             const activateVIPCode = () => {
                 if (!vipCode || !player) {
@@ -1056,7 +902,6 @@
                     return;
                 }
                 
-                // O vipLevel já é um número (1-5)
                 const vipLevelNum = keyData.vipLevel;
                 
                 if (player.vipLevel >= vipLevelNum) {
@@ -1070,24 +915,18 @@
                     return;
                 }
                 
-                // Marcar key como usada
                 const usedLevel = useVIPKey(vipCode.toUpperCase(), player.username);
                 if (!usedLevel) {
                     addNotification('! ERRO AO ATIVAR VIP !', 'error');
                     return;
                 }
                 
-                // Atualizar o jogador com o novo VIP
-                setPlayer(prev => {
-                    const updatedPlayer = {
-                        ...prev,
-                        vipLevel: vipLevelNum,
-                        vipBonus: vipData.bonus
-                    };
-                    return updatedPlayer;
-                });
+                setPlayer(prev => ({
+                    ...prev,
+                    vipLevel: vipLevelNum,
+                    vipBonus: vipData.bonus
+                }));
                 
-                // Salvar no banco de dados
                 const gameDataToSave = {
                     clan: player.clan,
                     coins: player.coins,
@@ -1113,15 +952,9 @@
                 setVipCode('');
                 loadAdminData();
                 
-                // Recarregar o player para atualizar os bônus
                 setTimeout(() => {
-                    const updatedUser = findUserByUsername(player.username);
-                    if (updatedUser) {
-                        const newGameData = loadPlayerFromDB(updatedUser);
-                        setPlayer(newGameData);
-                    }
                     window.location.reload();
-                }, 500);
+                }, 1000);
             };
 
             // ==================== LOGIN/REGISTRO ====================
@@ -1381,7 +1214,7 @@
                         </div>
                     </div>
                     
-                    {/* Tabs do Jogo */}
+                    {/* Tabs */}
                     <div className="flex gap-2 mb-4 flex-wrap">
                         <button onClick={() => setActiveTab('mine')} className={`px-4 py-2 border-2 text-[10px] font-bold transition ${activeTab === 'mine' ? 'bg-green-900 border-green-500 text-green-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ MINE ]</button>
                         <button onClick={() => setActiveTab('arena')} className={`px-4 py-2 border-2 text-[10px] font-bold transition ${activeTab === 'arena' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ ARENA {currentBossIndex}/100 ]</button>
@@ -1449,7 +1282,7 @@
                                                 <button key={block.id} onClick={() => mine(block.id)} disabled={destroyed}
                                                     className={`aspect-square text-sm font-bold pixel-btn transition-all
                                                         ${destroyed ? 'bg-gray-800 text-gray-600 cursor-not-allowed border border-gray-700' :
-                                                         block.mythical ? 'bg-purple-900 text-white border-2 border-purple-500 animate-pixel-pulse' :
+                                                        block.mythical ? 'bg-purple-900 text-white border-2 border-purple-500 animate-pixel-pulse' :
                                                         block.rare ? 'bg-yellow-900 text-yellow-400 border-2 border-yellow-600' :
                                                         'bg-green-900 text-green-400 border border-green-700'}
                                                     `}>
@@ -1596,7 +1429,7 @@
                                         <tbody>
                                             {topPlayers.coins.map((user, idx) => (
                                                 <tr key={idx} className={user.username === player?.username ? 'bg-yellow-900/30' : ''}>
-                                                    <td>{idx+1}</td><td>{user.username}</td><td>{formatNumber(user.gameData?.coins || 0)}</td>
+                                                    <td>{idx+1}</td><td className="text-green-400">{user.username}</td><td>{formatNumber(user.gameData?.coins || 0)}</td>
                                                 </tr>
                                             ))}
                                             {topPlayers.coins.length === 0 && <tr><td colSpan="3" className="text-center text-gray-500">NO DATA</td></tr>}
@@ -1611,7 +1444,7 @@
                                         <tbody>
                                             {topPlayers.gems.map((user, idx) => (
                                                 <tr key={idx} className={user.username === player?.username ? 'bg-yellow-900/30' : ''}>
-                                                    <td>{idx+1}</td><td>{user.username}</td><td>{user.gameData?.gems || 0}</td>
+                                                    <td>{idx+1}</td><td className="text-green-400">{user.username}</td><td>{user.gameData?.gems || 0}</td>
                                                 </tr>
                                             ))}
                                             {topPlayers.gems.length === 0 && <tr><td colSpan="3" className="text-center text-gray-500">NO DATA</td></tr>}
@@ -1626,7 +1459,7 @@
                                         <tbody>
                                             {topPlayers.level.map((user, idx) => (
                                                 <tr key={idx} className={user.username === player?.username ? 'bg-yellow-900/30' : ''}>
-                                                    <td>{idx+1}</td><td>{user.username}</td><td>{user.gameData?.pickaxeLevel || 0}</td>
+                                                    <td>{idx+1}</td><td className="text-green-400">{user.username}</td><td>{user.gameData?.pickaxeLevel || 0}</td>
                                                 </tr>
                                             ))}
                                             {topPlayers.level.length === 0 && <tr><td colSpan="3" className="text-center text-gray-500">NO DATA</td></tr>}
@@ -1652,11 +1485,12 @@
                                 <div>
                                     <div className="flex justify-between mb-3">
                                         <span className="text-red-400 text-[10px]">📋 USER LIST</span>
-                                        <button onClick={() => exportUsersToCSV()} className="bg-blue-900 border border-blue-500 px-2 py-1 text-[6px] font-bold pixel-btn">[ EXPORT CSV ]</button>
                                     </div>
                                     <div className="overflow-x-auto max-h-96 overflow-y-auto">
                                         <table className="admin-table w-full text-left">
-                                            <thead><tr><th>ID</th><th>USERNAME</th><th>EMAIL</th><th>ADMIN</th><th>COINS</th><th>GEMS</th><th>LEVEL</th><th>VIP</th><th>ACTIONS</th></tr></thead>
+                                            <thead>
+                                                <tr><th>ID</th><th>USERNAME</th><th>EMAIL</th><th>ADMIN</th><th>COINS</th><th>GEMS</th><th>LEVEL</th><th>VIP</th><th>CLAN</th><th>ACTIONS</th></tr>
+                                            </thead>
                                             <tbody>
                                                 {adminUsers.map(user => (
                                                     <tr key={user.id}>
@@ -1668,11 +1502,33 @@
                                                         <td>{user.gameData?.gems || 0}</td>
                                                         <td>{user.gameData?.pickaxeLevel || 0}</td>
                                                         <td>{user.gameData?.vipLevel || 0}</td>
+                                                        <td>{user.gameData?.clan?.name || 'FIGHTER'}</td>
                                                         <td>
-                                                            <button onClick={() => adminEditUser(user.username)} className="bg-blue-900 px-2 py-1 text-[6px] mr-1 pixel-btn">EDIT</button>
-                                                            <button onClick={() => adminDeleteUser(user.username)} className="bg-red-900 px-2 py-1 text-[6px] pixel-btn">DEL</button>
-                                                        </td>
-                                                    </tr>
+                                                            <button onClick={() => {
+                                                                const newCoins = prompt('Set Coins:', user.gameData?.coins || 0);
+                                                                const newGems = prompt('Set Gems:', user.gameData?.gems || 0);
+                                                                const newDamage = prompt('Set Damage:', user.gameData?.damage || 0);
+                                                                if (newCoins || newGems || newDamage) {
+                                                                    let gameData = user.gameData || {};
+                                                                    if (newCoins) gameData.coins = parseInt(newCoins);
+                                                                    if (newGems) gameData.gems = parseInt(newGems);
+                                                                    if (newDamage) gameData.damage = parseInt(newDamage);
+                                                                    updateUser(user.username, { gameData });
+                                                                    loadAdminData();
+                                                                    addNotification(`✅ User ${user.username} updated!`, 'success');
+                                                                }
+                                                            }} className="bg-blue-900 px-2 py-1 text-[6px] mr-1 pixel-btn">EDIT</button>
+                                                            <button onClick={() => {
+                                                                if (confirm(`Delete ${user.username}?`)) {
+                                                                    const db = initDatabase();
+                                                                    db.users = db.users.filter(u => u.username !== user.username);
+                                                                    saveDatabase(db);
+                                                                    loadAdminData();
+                                                                    addNotification(`✅ User ${user.username} deleted!`, 'success');
+                                                                }
+                                                            }} className="bg-red-900 px-2 py-1 text-[6px] pixel-btn">DEL</button>
+                                                         </td>
+                                                     </tr>
                                                 ))}
                                             </tbody>
                                         </table>
@@ -1726,7 +1582,36 @@
                                         <input type="email" placeholder="EMAIL" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-2 text-xs text-green-400" />
                                         <input type="password" placeholder="PASSWORD" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-2 text-xs text-green-400" />
                                         <label className="flex items-center gap-2"><input type="checkbox" checked={newIsAdmin} onChange={(e) => setNewIsAdmin(e.target.checked)} /><span className="text-[8px] text-gray-400">Admin User</span></label>
-                                        <button onClick={adminCreateUser} className="w-full bg-blue-800 border border-blue-500 py-2 text-[8px] font-bold pixel-btn">[ CREATE USER ]</button>
+                                        <button onClick={() => {
+                                            if (!newUsername || !newEmail || !newPassword) {
+                                                addNotification('❌ All fields required!', 'error');
+                                                return;
+                                            }
+                                            if (newPassword.length < 4) {
+                                                addNotification('❌ Password too short!', 'error');
+                                                return;
+                                            }
+                                            try {
+                                                const clan = { name: 'FIGHTER', damage: 1.1, luck: 1 };
+                                                createUser({
+                                                    username: newUsername,
+                                                    email: newEmail,
+                                                    password: newPassword,
+                                                    isAdmin: newIsAdmin,
+                                                    gameData: {
+                                                        clan: clan, coins: 1000, gems: 10, enchantStones: 5, damage: 11,
+                                                        pickaxeLevel: 1, pickaxeMultiplier: 1, keys: { common: 1, rare: 0, divine: 0 },
+                                                        swords: [], characters: [], equippedCharacters: [], equippedSword: null,
+                                                        rebirths: 0, totalMined: 0, vipLevel: 0, vipBonus: 0
+                                                    }
+                                                });
+                                                addNotification(`✅ User ${newUsername} created!`, 'success');
+                                                setNewUsername(''); setNewEmail(''); setNewPassword(''); setNewIsAdmin(false);
+                                                loadAdminData();
+                                            } catch (error) {
+                                                addNotification(`❌ ${error.message}`, 'error');
+                                            }
+                                        }} className="w-full bg-blue-800 border border-blue-500 py-2 text-[8px] font-bold pixel-btn">[ CREATE USER ]</button>
                                     </div>
                                 </div>
                             )}
