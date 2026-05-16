@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Panel - Anime Masters</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="database.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
@@ -137,6 +138,10 @@
             font-size: 10px;
             margin-top: 10px;
         }
+        .loading {
+            opacity: 0.5;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body class="bg-black text-green-400 p-6">
@@ -158,7 +163,7 @@
             <div class="text-center mb-8">
                 <div class="text-6xl mb-4">👑</div>
                 <h1 class="text-2xl font-bold text-red-400">ADMIN PANEL</h1>
-                <p class="text-gray-500 text-xs mt-2">[ DATABASE MANAGEMENT SYSTEM ]</p>
+                <p class="text-gray-500 text-xs mt-2">[ DATABASE MANAGEMENT SYSTEM - SUPABASE ]</p>
             </div>
             
             <!-- Stats Cards -->
@@ -269,7 +274,7 @@
                                 <tbody id="vipKeysTableBody">
                                     <tr><td colspan="4" class="text-center">Loading...</td></tr>
                                 </tbody>
-                             </table>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -310,7 +315,6 @@
                     
                     <div class="bg-gray-900 border-2 border-red-600 p-4">
                         <h3 class="text-red-400 text-sm mb-3">⚠️ DANGER ZONE</h3>
-                        <button onclick="cleanOldUsers()" class="w-full bg-red-800 border-2 border-red-500 py-2 text-xs font-bold pixel-btn mb-3">[ CLEAN INACTIVE USERS (30+ DAYS) ]</button>
                         <button onclick="resetAllData()" class="w-full bg-red-900 border-2 border-red-700 py-2 text-xs font-bold pixel-btn">[ RESET ALL DATA ]</button>
                         <div class="text-gray-500 text-[8px] text-center mt-2">⚠️ THIS CANNOT BE UNDONE!</div>
                     </div>
@@ -334,6 +338,7 @@
         let allUsers = [];
         let allVIPKeys = [];
         let currentEditUser = null;
+        let isLoading = false;
         
         // Lista de Clans disponíveis
         const CLANS_LIST = [
@@ -350,12 +355,18 @@
             { name: 'SHADOW GARDEN', rarity: 'TRANSCENDENT', damage: 15.0, luck: 8.0 }
         ];
         
-        // Mapeamento de níveis VIP
-        const VIP_LEVEL_NUMBER = {
-            'BRONZE': 1, 'SILVER': 2, 'GOLD': 3, 'PLATINUM': 4, 'DIAMOND': 5
-        };
-        const VIP_LEVEL_NAME = { 1: 'BRONZE', 2: 'SILVER', 3: 'GOLD', 4: 'PLATINUM', 5: 'DIAMOND' };
+        // VIP Bonus
         const VIP_BONUS = { 0: 0, 1: 5, 2: 10, 3: 20, 4: 28, 5: 35 };
+        
+        // Format number
+        function formatNumber(num) {
+            if (num === undefined || num === null) return '0';
+            if (num >= 1e12) return (num / 1e12).toFixed(1) + 'T';
+            if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+            if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+            if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+            return num.toString();
+        }
         
         // Login check
         function checkLogin() {
@@ -377,53 +388,29 @@
         }
         
         // Initialize
-        function init() {
-            updateStats();
-            loadUsers();
-            loadVIPKeys();
+        async function init() {
+            await loadUsers();
+            await loadVIPKeys();
+            await updateStats();
         }
         
-        function showTab(tab) {
-            document.getElementById('tabUsers').classList.add('hidden');
-            document.getElementById('tabVip').classList.add('hidden');
-            document.getElementById('tabCreate').classList.add('hidden');
-            document.getElementById('tabBackup').classList.add('hidden');
-            
-            document.getElementById(`tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`).classList.remove('hidden');
-            
-            const tabs = ['users', 'vip', 'create', 'backup'];
-            tabs.forEach(t => {
-                const btn = document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}Btn`);
-                if (btn) {
-                    if (t === tab) {
-                        btn.classList.remove('bg-gray-800', 'border-gray-600');
-                        btn.classList.add('bg-green-900', 'border-green-500');
-                    } else {
-                        btn.classList.remove('bg-green-900', 'border-green-500');
-                        btn.classList.add('bg-gray-800', 'border-gray-600');
-                    }
-                }
-            });
-            
-            if (tab === 'users') loadUsers();
-            if (tab === 'vip') loadVIPKeys();
-        }
-        
-        function updateStats() {
-            const stats = window.AnimeDB.getDatabaseStats();
+        async function updateStats() {
+            if (!window.AnimeDB) return;
+            const stats = await window.AnimeDB.getDatabaseStats();
             document.getElementById('totalUsers').textContent = stats.totalUsers;
             document.getElementById('totalKeys').textContent = stats.totalVIPKeys;
             document.getElementById('usedKeys').textContent = stats.usedVIPKeys;
             document.getElementById('adminCount').textContent = stats.adminUsers;
             
-            const totalCoins = allUsers.reduce((sum, u) => sum + (u.gameData?.coins || 0), 0);
+            const totalCoins = allUsers.reduce((sum, u) => sum + (u.game_data?.coins || 0), 0);
             document.getElementById('totalCoins').textContent = formatNumber(totalCoins);
         }
         
-        function loadUsers() {
-            allUsers = window.AnimeDB.getAllUsers();
+        async function loadUsers() {
+            if (!window.AnimeDB) return;
+            allUsers = await window.AnimeDB.getAllUsers();
             renderUsersTable(allUsers);
-            updateStats();
+            await updateStats();
         }
         
         function renderUsersTable(users) {
@@ -437,19 +424,19 @@
                 <tr>
                     <td>${user.id}</td>
                     <td class="font-bold text-green-400">${user.username}</td>
-                    <td class="text-xs">${user.email}</td>
-                    <td>${user.isAdmin ? '👑 YES' : '❌ NO'}</td>
-                    <td>${formatNumber(user.gameData?.coins || 0)}</td>
-                    <td>${user.gameData?.gems || 0}</td>
-                    <td>${user.gameData?.pickaxeLevel || 0}</td>
-                    <td>${user.gameData?.vipLevel || 0}</td>
-                    <td>${user.gameData?.clan?.name || 'FIGHTER'}</td>
-                    <td class="text-xs">${new Date(user.createdAt).toLocaleDateString()}</td>
-                    <td class="text-xs">${user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'NEVER'}</td>
+                    <td class="text-xs">${user.email || '-'}</td>
+                    <td>${user.is_admin ? '👑 YES' : '❌ NO'}</td>
+                    <td>${formatNumber(user.game_data?.coins || 0)}</td>
+                    <td>${user.game_data?.gems || 0}</td>
+                    <td>${user.game_data?.pickaxeLevel || 0}</td>
+                    <td>${user.game_data?.vipLevel || 0}</td>
+                    <td>${user.game_data?.clan?.name || 'FIGHTER'}</td>
+                    <td class="text-xs">${user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}</td>
+                    <td class="text-xs">${user.last_login ? new Date(user.last_login).toLocaleDateString() : 'NEVER'}</td>
                     <td>
                         <button onclick="openEditModal('${user.username}')" class="bg-blue-900 px-2 py-1 text-xs mr-1 pixel-btn">[ EDIT ]</button>
                         <button onclick="deleteUserConfirm('${user.username}')" class="bg-red-900 px-2 py-1 text-xs pixel-btn">[ DEL ]</button>
-                    </td>
+                     </td>
                 </tr>
             `).join('');
         }
@@ -458,22 +445,22 @@
             const searchTerm = document.getElementById('searchUser').value.toLowerCase();
             const filtered = allUsers.filter(u => 
                 u.username.toLowerCase().includes(searchTerm) || 
-                u.email.toLowerCase().includes(searchTerm)
+                (u.email && u.email.toLowerCase().includes(searchTerm))
             );
             renderUsersTable(filtered);
         }
         
-        function refreshUsers() {
-            loadUsers();
+        async function refreshUsers() {
+            await loadUsers();
             document.getElementById('searchUser').value = '';
         }
         
         // OPEN EDIT MODAL
         function openEditModal(username) {
-            currentEditUser = window.AnimeDB.findUserByUsername(username);
+            currentEditUser = allUsers.find(u => u.username === username);
             if (!currentEditUser) return;
             
-            const gameData = currentEditUser.gameData || {};
+            const gameData = currentEditUser.game_data || {};
             const currentClan = gameData.clan?.name || 'FIGHTER';
             
             const modalHtml = `
@@ -481,7 +468,7 @@
                 <input type="text" id="editUsername" value="${currentEditUser.username}" disabled style="opacity:0.7;">
                 
                 <label>EMAIL</label>
-                <input type="email" id="editEmail" value="${currentEditUser.email}">
+                <input type="email" id="editEmail" value="${currentEditUser.email || ''}">
                 
                 <label>PASSWORD</label>
                 <input type="password" id="editPassword" placeholder="Leave blank to keep same">
@@ -530,7 +517,7 @@
                 <input type="number" id="editDivineKeys" value="${gameData.keys?.divine || 0}">
                 
                 <label style="margin-top:15px;">
-                    <input type="checkbox" id="editIsAdmin" ${currentEditUser.isAdmin ? 'checked' : ''}>
+                    <input type="checkbox" id="editIsAdmin" ${currentEditUser.is_admin ? 'checked' : ''}>
                     <span style="display:inline; margin-left:10px;">ADMIN USER</span>
                 </label>
                 
@@ -546,15 +533,15 @@
             currentEditUser = null;
         }
         
-        function saveUserEdit() {
-            if (!currentEditUser) return;
+        async function saveUserEdit() {
+            if (!currentEditUser || isLoading) return;
+            isLoading = true;
             
             const selectedClan = CLANS_LIST.find(c => c.name === document.getElementById('editClan').value);
             const newVipLevel = parseInt(document.getElementById('editVipLevel').value);
             
             const updatedGameData = {
-                ...currentEditUser.gameData,
-                email: document.getElementById('editEmail').value,
+                ...currentEditUser.game_data,
                 coins: parseInt(document.getElementById('editCoins').value) || 0,
                 gems: parseInt(document.getElementById('editGems').value) || 0,
                 enchantStones: parseInt(document.getElementById('editStones').value) || 0,
@@ -571,75 +558,66 @@
             };
             
             const newPassword = document.getElementById('editPassword').value;
-            const updateData = { gameData: updatedGameData };
+            const updateData = { game_data: updatedGameData };
             
             if (newPassword) {
                 updateData.password = newPassword;
             }
             
-            updateData.isAdmin = document.getElementById('editIsAdmin').checked;
+            updateData.is_admin = document.getElementById('editIsAdmin').checked;
             
             try {
-                window.AnimeDB.updateUser(currentEditUser.username, updateData);
+                await window.AnimeDB.updateUser(currentEditUser.username, updateData);
                 alert(`✅ User ${currentEditUser.username} updated successfully!`);
                 closeModal();
-                loadUsers();
+                await loadUsers();
             } catch (error) {
                 alert(`❌ Error: ${error.message}`);
             }
+            isLoading = false;
         }
         
-        function deleteUserConfirm(username) {
-            if (confirm(`⚠️ DELETE USER "${username}"? This cannot be undone!`)) {
-                window.AnimeDB.deleteUser(username);
+        async function deleteUserConfirm(username) {
+            if (!confirm(`⚠️ DELETE USER "${username}"? This cannot be undone!`)) return;
+            if (isLoading) return;
+            isLoading = true;
+            
+            try {
+                await window.AnimeDB.deleteUser(username);
                 alert(`✅ User ${username} deleted!`);
-                loadUsers();
+                await loadUsers();
+            } catch (error) {
+                alert(`❌ Error: ${error.message}`);
             }
+            isLoading = false;
         }
         
         function exportUsers() {
+            if (!window.AnimeDB) return;
             window.AnimeDB.exportUsersToCSV();
         }
         
-        function generateKeys() {
+        async function generateKeys() {
+            if (!window.AnimeDB || isLoading) return;
+            isLoading = true;
+            
             const levelName = document.getElementById('generateVipLevel').value;
             const quantity = parseInt(document.getElementById('generateQuantity').value);
-            const levelNumber = VIP_LEVEL_NUMBER[levelName] || 5;
             
-            const keys = [];
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            
-            for (let i = 0; i < quantity; i++) {
-                let key = `VIP-${levelName}-`;
-                for (let j = 0; j < 12; j++) {
-                    key += chars[Math.floor(Math.random() * chars.length)];
-                    if (j === 3 || j === 7) key += '-';
-                }
-                
-                const db = window.AnimeDB.initDatabase();
-                if (!db.vipKeys) db.vipKeys = [];
-                
-                db.vipKeys.push({
-                    key: key,
-                    vipLevel: levelNumber,
-                    generatedBy: 'ADMIN',
-                    generatedAt: new Date().toISOString(),
-                    used: false,
-                    usedBy: null,
-                    usedAt: null
-                });
-                
-                window.AnimeDB.saveDatabase(db);
-                keys.push(key);
+            try {
+                const keys = await window.AnimeDB.generateMultipleVIPKeys(levelName, quantity, 'ADMIN');
+                alert(`✅ Generated ${quantity} VIP ${levelName} keys!\n\nFirst key: ${keys[0]}`);
+                await loadVIPKeys();
+            } catch (error) {
+                alert(`❌ Error: ${error.message}`);
             }
-            
-            alert(`✅ Generated ${quantity} VIP ${levelName} keys!\n\nFirst key: ${keys[0]}`);
-            loadVIPKeys();
+            isLoading = false;
         }
         
-        function loadVIPKeys() {
-            const db = window.AnimeDB.initDatabase();
-            allVIPKeys = db.vipKeys || [];
+        async function loadVIPKeys() {
+            if (!window.AnimeDB) return;
+            const db = await window.AnimeDB.getAllVIPKeys();
+            allVIPKeys = db || [];
             const tbody = document.getElementById('vipKeysTableBody');
             
             if (!allVIPKeys.length) {
@@ -648,19 +626,21 @@
             }
             
             tbody.innerHTML = allVIPKeys.slice().reverse().map(key => {
-                const levelName = VIP_LEVEL_NAME[key.vipLevel] || key.vipLevel;
+                const levelName = ['', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'][key.vip_level] || key.vip_level;
                 return `
                     <tr>
-                        <td class="font-mono text-xs">${key.key}</td>
-                        <td>${levelName} (${key.vipLevel})</td>
+                        <td class="font-mono text-xs">${key.key_code}</td>
+                        <td>${levelName} (${key.vip_level})</td>
                         <td class="${key.used ? 'text-red-400' : 'text-green-400'}">${key.used ? 'USED' : 'ACTIVE'}</td>
-                        <td class="text-xs">${key.usedBy || '-'}</td>
+                        <td class="text-xs">${key.used_by || '-'}</td>
                     </tr>
                 `;
             }).join('');
         }
         
-        function createNewUser() {
+        async function createNewUser() {
+            if (!window.AnimeDB || isLoading) return;
+            
             const username = document.getElementById('newUsername').value.trim();
             const email = document.getElementById('newEmail').value.trim();
             const password = document.getElementById('newPassword').value;
@@ -681,14 +661,15 @@
                 return;
             }
             
+            isLoading = true;
             try {
                 const defaultClan = { name: 'FIGHTER', damage: 1.1, luck: 1 };
-                window.AnimeDB.createUser({
+                await window.AnimeDB.createUser({
                     username,
                     email,
                     password,
-                    isAdmin,
-                    gameData: {
+                    is_admin: isAdmin,
+                    game_data: {
                         clan: defaultClan,
                         coins: 1000,
                         gems: 10,
@@ -704,7 +685,8 @@
                         rebirths: 0,
                         totalMined: 0,
                         vipLevel: 0,
-                        vipBonus: 0
+                        vipBonus: 0,
+                        bossProgress: 1
                     }
                 });
                 
@@ -717,8 +699,8 @@
                 document.getElementById('newPassword').value = '';
                 document.getElementById('newIsAdmin').checked = false;
                 
-                loadUsers();
-                updateStats();
+                await loadUsers();
+                await updateStats();
                 
                 setTimeout(() => resultDiv.classList.add('hidden'), 3000);
             } catch (error) {
@@ -726,9 +708,11 @@
                 resultDiv.className = 'mt-4 text-center text-xs text-red-400';
                 resultDiv.classList.remove('hidden');
             }
+            isLoading = false;
         }
         
         function backupData() {
+            if (!window.AnimeDB) return;
             window.AnimeDB.backupDatabase();
         }
         
@@ -742,44 +726,73 @@
             }
             
             const reader = new FileReader();
-            reader.onload = function(e) {
-                const success = window.AnimeDB.restoreDatabase(e.target.result);
-                if (success) {
+            reader.onload = async function(e) {
+                try {
+                    const backup = JSON.parse(e.target.result);
+                    // Restaurar usuários
+                    for (const user of backup.users) {
+                        try {
+                            await window.AnimeDB.createUser(user);
+                        } catch (err) {
+                            console.log('User exists:', user.username);
+                        }
+                    }
+                    // Restaurar VIP keys
+                    for (const key of (backup.vipKeys || [])) {
+                        try {
+                            await window.AnimeDB.generateMultipleVIPKeys(
+                                ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'][key.vip_level - 1] || 'DIAMOND',
+                                1,
+                                key.generated_by
+                            );
+                        } catch (err) {}
+                    }
                     alert('✅ Database restored successfully!');
                     window.location.reload();
-                } else {
+                } catch (err) {
                     alert('❌ Failed to restore backup!');
                 }
             };
             reader.readAsText(file);
         }
         
-        function cleanOldUsers() {
-            if (confirm('⚠️ Remove users inactive for more than 30 days?')) {
-                const remaining = window.AnimeDB.cleanOldUsers(30);
-                alert(`✅ Cleaned! ${remaining} users remaining.`);
-                loadUsers();
-                updateStats();
+        async function resetAllData() {
+            if (!confirm('⚠️⚠️⚠️ RESET ALL DATA? This will delete EVERYTHING! ⚠️⚠️⚠️')) return;
+            if (!confirm('LAST CHANCE! ARE YOU ABSOLUTELY SURE?')) return;
+            
+            if (window.AnimeDB && window.AnimeDB.resetDatabase) {
+                await window.AnimeDB.resetDatabase();
+                alert('Database reset! Page will reload.');
+                window.location.reload();
+            } else {
+                alert('Reset function not available. Please contact developer.');
             }
         }
         
-        function resetAllData() {
-            if (confirm('⚠️⚠️⚠️ RESET ALL DATA? This will delete EVERYTHING! ⚠️⚠️⚠️')) {
-                if (confirm('LAST CHANCE! ARE YOU ABSOLUTELY SURE?')) {
-                    localStorage.removeItem('animeMastersDB');
-                    alert('Database reset! Page will reload.');
-                    window.location.reload();
+        function showTab(tab) {
+            document.getElementById('tabUsers').classList.add('hidden');
+            document.getElementById('tabVip').classList.add('hidden');
+            document.getElementById('tabCreate').classList.add('hidden');
+            document.getElementById('tabBackup').classList.add('hidden');
+            
+            document.getElementById(`tab${tab.charAt(0).toUpperCase() + tab.slice(1)}`).classList.remove('hidden');
+            
+            const tabs = ['users', 'vip', 'create', 'backup'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}Btn`);
+                if (btn) {
+                    if (t === tab) {
+                        btn.classList.remove('bg-gray-800', 'border-gray-600');
+                        btn.classList.add('bg-green-900', 'border-green-500');
+                    } else {
+                        btn.classList.remove('bg-green-900', 'border-green-500');
+                        btn.classList.add('bg-gray-800', 'border-gray-600');
+                    }
                 }
-            }
-        }
-        
-        function formatNumber(num) {
-            if (num === undefined || num === null) return '0';
-            if (num >= 1e12) return (num / 1e12).toFixed(1) + 'T';
-            if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
-            if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
-            if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
-            return num.toString();
+            });
+            
+            if (tab === 'users') loadUsers();
+            if (tab === 'vip') loadVIPKeys();
         }
         
         // Close modal when clicking outside
@@ -789,6 +802,16 @@
                 closeModal();
             }
         }
+        
+        // Aguardar database.js carregar
+        function waitForDB() {
+            if (window.AnimeDB) {
+                console.log('✅ Database connected!');
+            } else {
+                setTimeout(waitForDB, 100);
+            }
+        }
+        waitForDB();
     </script>
 </body>
 </html>
