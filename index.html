@@ -8,6 +8,7 @@
     <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
         
@@ -144,168 +145,6 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
 
-        // ==================== BANCO DE DADOS (EMBUTIDO) ====================
-        
-        function initDatabase() {
-            if (!localStorage.getItem('animeMastersDB')) {
-                const initialDB = {
-                    users: [],
-                    vipKeys: [],
-                    nextId: 1,
-                    version: '1.0',
-                    lastBackup: new Date().toISOString()
-                };
-                localStorage.setItem('animeMastersDB', JSON.stringify(initialDB));
-            }
-            return JSON.parse(localStorage.getItem('animeMastersDB'));
-        }
-
-        function saveDatabase(db) {
-            localStorage.setItem('animeMastersDB', JSON.stringify(db));
-        }
-
-        function findUserByUsername(username) {
-            if (!username) return null;
-            const db = initDatabase();
-            return db.users.find(u => u.username.toLowerCase() === username.toLowerCase());
-        }
-
-        function findUserByEmail(email) {
-            if (!email) return null;
-            const db = initDatabase();
-            return db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-        }
-
-        function createUser(userData) {
-            const db = initDatabase();
-            
-            if (findUserByUsername(userData.username)) {
-                throw new Error('Usuário já existe!');
-            }
-            if (findUserByEmail(userData.email)) {
-                throw new Error('Email já cadastrado!');
-            }
-            
-            const newUser = {
-                id: db.nextId++,
-                username: userData.username,
-                email: userData.email,
-                password: userData.password,
-                isAdmin: userData.isAdmin || false,
-                createdAt: new Date().toISOString(),
-                lastLogin: null,
-                gameData: userData.gameData || null
-            };
-            
-            db.users.push(newUser);
-            saveDatabase(db);
-            return newUser;
-        }
-
-        function updateUser(username, updatedData) {
-            const db = initDatabase();
-            const index = db.users.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
-            
-            if (index === -1) {
-                throw new Error('Usuário não encontrado!');
-            }
-            
-            db.users[index] = { ...db.users[index], ...updatedData };
-            saveDatabase(db);
-            return db.users[index];
-        }
-
-        function getAllUsers() {
-            const db = initDatabase();
-            return db.users;
-        }
-
-        function updateLastLogin(username) {
-            return updateUser(username, { lastLogin: new Date().toISOString() });
-        }
-
-        function getDatabaseStats() {
-            const db = initDatabase();
-            const totalCoins = db.users.reduce((sum, u) => sum + (u.gameData?.coins || 0), 0);
-            return {
-                totalUsers: db.users.length,
-                totalVIPKeys: db.vipKeys?.length || 0,
-                usedVIPKeys: db.vipKeys?.filter(k => k.used).length || 0,
-                adminUsers: db.users.filter(u => u.isAdmin).length,
-                totalCoins: totalCoins
-            };
-        }
-
-        // Mapeamento de níveis VIP
-        const VIP_LEVEL_MAP = {
-            'BRONZE': 1, 'SILVER': 2, 'GOLD': 3, 'PLATINUM': 4, 'DIAMOND': 5
-        };
-        
-        const VIP_LEVEL_NAME = { 1: 'BRONZE', 2: 'SILVER', 3: 'GOLD', 4: 'PLATINUM', 5: 'DIAMOND' };
-        
-        function generateMultipleVIPKeys(vipLevel, quantity, generatedBy) {
-            const keys = [];
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            const levelNumber = VIP_LEVEL_MAP[vipLevel.toUpperCase()] || 5;
-            
-            for (let i = 0; i < quantity; i++) {
-                let key = `VIP-${vipLevel.toUpperCase()}-`;
-                for (let j = 0; j < 12; j++) {
-                    key += chars[Math.floor(Math.random() * chars.length)];
-                    if (j === 3 || j === 7) key += '-';
-                }
-                
-                const db = initDatabase();
-                if (!db.vipKeys) db.vipKeys = [];
-                
-                db.vipKeys.push({
-                    key: key,
-                    vipLevel: levelNumber,
-                    generatedBy: generatedBy,
-                    generatedAt: new Date().toISOString(),
-                    used: false,
-                    usedBy: null,
-                    usedAt: null
-                });
-                saveDatabase(db);
-                keys.push(key);
-            }
-            return keys;
-        }
-
-        function findVIPKey(key) {
-            const db = initDatabase();
-            if (!db.vipKeys) return null;
-            return db.vipKeys.find(k => k.key === key);
-        }
-
-        function useVIPKey(key, username) {
-            const db = initDatabase();
-            const keyData = db.vipKeys.find(k => k.key === key);
-            
-            if (!keyData) return false;
-            if (keyData.used) return false;
-            
-            keyData.used = true;
-            keyData.usedBy = username;
-            keyData.usedAt = new Date().toISOString();
-            
-            saveDatabase(db);
-            return keyData.vipLevel;
-        }
-
-        // ==================== FORMATAÇÃO ====================
-        function formatNumber(num) {
-            if (num === undefined || num === null) return '0';
-            if (num >= 1e18) return (num / 1e18).toFixed(1) + 'Qi';
-            if (num >= 1e15) return (num / 1e15).toFixed(1) + 'Qa';
-            if (num >= 1e12) return (num / 1e12).toFixed(1) + 'T';
-            if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
-            if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
-            if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
-            return Math.floor(num).toString();
-        }
-
         // ==================== CONSTANTES DO JOGO ====================
         
         const CLANS = [
@@ -385,6 +224,18 @@
             { name: 'DRAGON', emoji: '🐉', hp: 1000000, rewardCoins: 1000000, rewardGems: 50, rewardStones: 250 }
         ];
 
+        // ==================== FORMATAÇÃO ====================
+        function formatNumber(num) {
+            if (num === undefined || num === null) return '0';
+            if (num >= 1e18) return (num / 1e18).toFixed(1) + 'Qi';
+            if (num >= 1e15) return (num / 1e15).toFixed(1) + 'Qa';
+            if (num >= 1e12) return (num / 1e12).toFixed(1) + 'T';
+            if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+            if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+            if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+            return Math.floor(num).toString();
+        }
+
         // ==================== COMPONENTE PRINCIPAL ====================
         
         function AnimeMasters() {
@@ -441,6 +292,9 @@
             
             const [adminEmail, setAdminEmail] = useState('');
             const [adminPasswordLogin, setAdminPasswordLogin] = useState('');
+            
+            // Loading state
+            const [loading, setLoading] = useState(false);
 
             // ==================== FUNÇÕES DO JOGO ====================
             
@@ -487,19 +341,20 @@
                 return 1 + ((player?.vipBonus || 0) / 100);
             }, [player]);
 
-            const updateRankings = useCallback(() => {
-                const users = getAllUsers();
-                const playersWithData = users.filter(u => u.gameData);
+            const updateRankings = useCallback(async () => {
+                if (!window.AnimeDB) return;
+                const users = await window.AnimeDB.getAllUsers();
+                const playersWithData = users.filter(u => u.game_data);
                 
-                const coinRank = [...playersWithData].sort((a, b) => (b.gameData?.coins || 0) - (a.gameData?.coins || 0)).slice(0, 10);
-                const gemRank = [...playersWithData].sort((a, b) => (b.gameData?.gems || 0) - (a.gameData?.gems || 0)).slice(0, 10);
-                const levelRank = [...playersWithData].sort((a, b) => (b.gameData?.pickaxeLevel || 0) - (a.gameData?.pickaxeLevel || 0)).slice(0, 10);
+                const coinRank = [...playersWithData].sort((a, b) => (b.game_data?.coins || 0) - (a.game_data?.coins || 0)).slice(0, 10);
+                const gemRank = [...playersWithData].sort((a, b) => (b.game_data?.gems || 0) - (a.game_data?.gems || 0)).slice(0, 10);
+                const levelRank = [...playersWithData].sort((a, b) => (b.game_data?.pickaxeLevel || 0) - (a.game_data?.pickaxeLevel || 0)).slice(0, 10);
                 
                 setTopPlayers({ coins: coinRank, gems: gemRank, level: levelRank });
             }, []);
 
-            const savePlayerToDB = useCallback(() => {
-                if (!player || !player.username) return;
+            const savePlayerToDB = useCallback(async () => {
+                if (!player || !player.username || !window.AnimeDB) return;
                 
                 const gameDataToSave = {
                     clan: player.clan,
@@ -521,14 +376,14 @@
                     bossProgress: currentBossIndex
                 };
                 
-                updateUser(player.username, { gameData: gameDataToSave });
+                await window.AnimeDB.updateUser(player.username, { game_data: gameDataToSave });
                 updateRankings();
                 loadAdminData();
             }, [player, currentBossIndex, updateRankings]);
 
             const loadPlayerFromDB = useCallback((userData) => {
-                if (userData.gameData) {
-                    const saved = userData.gameData;
+                if (userData.game_data) {
+                    const saved = userData.game_data;
                     const vipLevelData = VIP_LEVELS.find(v => v.level === (saved.vipLevel || 0));
                     return {
                         username: userData.username,
@@ -578,34 +433,35 @@
 
             // ==================== ADMIN FUNCTIONS ====================
             
-            const loadAdminData = () => {
-                const users = getAllUsers();
+            const loadAdminData = async () => {
+                if (!window.AnimeDB) return;
+                const users = await window.AnimeDB.getAllUsers();
                 setAdminUsers(users);
-                const db = initDatabase();
-                setAdminVIPKeys(db.vipKeys || []);
-                const stats = getDatabaseStats();
+                const vipKeys = await window.AnimeDB.getAllVIPKeys();
+                setAdminVIPKeys(vipKeys);
+                const stats = await window.AnimeDB.getDatabaseStats();
                 setAdminStats(stats);
             };
 
-            const adminGiveStats = () => {
+            const adminGiveStats = async () => {
                 if (!adminTarget) {
                     addNotification('! DIGITE UM USUARIO !', 'error');
                     return;
                 }
-                const user = findUserByUsername(adminTarget);
+                const user = await window.AnimeDB.findUserByUsername(adminTarget);
                 if (!user) {
                     addNotification('! USUARIO NAO ENCONTRADO !', 'error');
                     return;
                 }
                 
-                let gameData = user.gameData || {};
+                let gameData = user.game_data || {};
                 if (adminCoins) gameData.coins = parseInt(adminCoins);
                 if (adminGems) gameData.gems = parseInt(adminGems);
                 if (adminStones) gameData.enchantStones = parseInt(adminStones);
                 if (adminKeys) gameData.keys = { common: parseInt(adminKeys), rare: parseInt(adminKeys), divine: parseInt(adminKeys) };
                 if (adminDamage) gameData.damage = parseInt(adminDamage);
                 
-                updateUser(adminTarget, { gameData });
+                await window.AnimeDB.updateUser(adminTarget, { game_data: gameData });
                 
                 if (player && player.username.toLowerCase() === adminTarget.toLowerCase()) {
                     setPlayer(prev => ({
@@ -626,10 +482,11 @@
                 setAdminDamage('');
             };
 
-            const adminGenerateKeys = () => {
+            const adminGenerateKeys = async () => {
+                if (!window.AnimeDB) return;
                 const level = adminVipLevel;
                 const quantity = adminKeyQuantity;
-                const keys = generateMultipleVIPKeys(level, quantity, player?.username || 'ADMIN');
+                const keys = await window.AnimeDB.generateMultipleVIPKeys(level, quantity, player?.username || 'ADMIN');
                 setGeneratedKeys(keys);
                 addNotification(`✅ Generated ${quantity} VIP ${level} keys!`, 'success');
                 loadAdminData();
@@ -885,13 +742,13 @@
 
             // ==================== ACTIVATE VIP ====================
             
-            const activateVIPCode = () => {
-                if (!vipCode || !player) {
+            const activateVIPCode = async () => {
+                if (!vipCode || !player || !window.AnimeDB) {
                     addNotification('! DIGITE UM CODIGO VIP !', 'error');
                     return;
                 }
                 
-                const keyData = findVIPKey(vipCode.toUpperCase());
+                const keyData = await window.AnimeDB.findVIPKey(vipCode.toUpperCase());
                 if (!keyData) {
                     addNotification('! CODIGO VIP INVALIDO !', 'error');
                     return;
@@ -902,7 +759,7 @@
                     return;
                 }
                 
-                const vipLevelNum = keyData.vipLevel;
+                const vipLevelNum = keyData.vip_level;
                 
                 if (player.vipLevel >= vipLevelNum) {
                     addNotification(`! VOCE JA POSSUI VIP NIVEL ${player.vipLevel} OU SUPERIOR !`, 'error');
@@ -915,7 +772,7 @@
                     return;
                 }
                 
-                const usedLevel = useVIPKey(vipCode.toUpperCase(), player.username);
+                const usedLevel = await window.AnimeDB.useVIPKey(vipCode.toUpperCase(), player.username);
                 if (!usedLevel) {
                     addNotification('! ERRO AO ATIVAR VIP !', 'error');
                     return;
@@ -946,7 +803,7 @@
                     vipBonus: vipData.bonus,
                     bossProgress: currentBossIndex
                 };
-                updateUser(player.username, { gameData: gameDataToSave });
+                await window.AnimeDB.updateUser(player.username, { game_data: gameDataToSave });
                 
                 addNotification(`✅ VIP ${vipData.name} ATIVADO! +${vipData.bonus}% EM TUDO!`, 'legendary');
                 setVipCode('');
@@ -959,7 +816,7 @@
 
             // ==================== LOGIN/REGISTRO ====================
             
-            const register = () => {
+            const register = async () => {
                 if (!username || !email || !password) {
                     addNotification('! FALTA DADOS !', 'error');
                     return;
@@ -969,14 +826,15 @@
                     return;
                 }
                 
+                setLoading(true);
                 try {
                     const clan = randomClan();
                     const newUser = {
                         username: username.trim(),
                         email: email,
                         password: password,
-                        isAdmin: false,
-                        gameData: {
+                        is_admin: false,
+                        game_data: {
                             clan: clan,
                             coins: 1000,
                             gems: 10,
@@ -997,8 +855,8 @@
                         }
                     };
                     
-                    createUser(newUser);
-                    const gameData = loadPlayerFromDB(newUser);
+                    const userData = await window.AnimeDB.createUser(newUser);
+                    const gameData = loadPlayerFromDB(userData);
                     setPlayer(gameData);
                     setMineBlocks(initMineBlocks());
                     setCurrentBossIndex(1);
@@ -1011,48 +869,55 @@
                 } catch (error) {
                     addNotification(`❌ ${error.message}`, 'error');
                 }
+                setLoading(false);
             };
 
-            const login = () => {
+            const login = async () => {
                 if (!loginUsername || !loginPassword) {
                     addNotification('! DIGITE USUARIO E SENHA !', 'error');
                     return;
                 }
                 
-                const user = findUserByUsername(loginUsername);
-                if (!user) {
-                    addNotification('! USUARIO NAO ENCONTRADO !', 'error');
-                    return;
+                setLoading(true);
+                try {
+                    const user = await window.AnimeDB.findUserByUsername(loginUsername);
+                    if (!user) {
+                        addNotification('! USUARIO NAO ENCONTRADO !', 'error');
+                        return;
+                    }
+                    
+                    if (user.password !== loginPassword) {
+                        addNotification('! SENHA INCORRETA !', 'error');
+                        return;
+                    }
+                    
+                    await window.AnimeDB.updateLastLogin(loginUsername);
+                    
+                    if (loginUsername === 'ADMIN' && loginPassword === 'ADMIN123') {
+                        setIsAdmin(true);
+                    }
+                    if (user.is_admin) setIsAdmin(true);
+                    
+                    const gameData = loadPlayerFromDB(user);
+                    setPlayer(gameData);
+                    setMineBlocks(initMineBlocks());
+                    setCurrentBossIndex(gameData.bossProgress || 1);
+                    if (gameData.bossProgress && gameData.bossProgress <= ALL_BOSSES.length) {
+                        setArenaBossHp(ALL_BOSSES[gameData.bossProgress - 1]?.hp || 1000);
+                    }
+                    setScreen('game');
+                    sessionStorage.setItem('animeMastersSession', JSON.stringify({ username: user.username, password: loginPassword }));
+                    addNotification(`WELCOME BACK ${user.username}!`, 'success');
+                    updateRankings();
+                    loadAdminData();
+                } catch (error) {
+                    addNotification(`❌ ${error.message}`, 'error');
                 }
-                
-                if (user.password !== loginPassword) {
-                    addNotification('! SENHA INCORRETA !', 'error');
-                    return;
-                }
-                
-                updateLastLogin(loginUsername);
-                
-                if (loginUsername === 'ADMIN' && loginPassword === 'ADMIN123') {
-                    setIsAdmin(true);
-                }
-                if (user.isAdmin) setIsAdmin(true);
-                
-                const gameData = loadPlayerFromDB(user);
-                setPlayer(gameData);
-                setMineBlocks(initMineBlocks());
-                setCurrentBossIndex(gameData.bossProgress || 1);
-                if (gameData.bossProgress && gameData.bossProgress <= ALL_BOSSES.length) {
-                    setArenaBossHp(ALL_BOSSES[gameData.bossProgress - 1]?.hp || 1000);
-                }
-                setScreen('game');
-                sessionStorage.setItem('animeMastersSession', JSON.stringify({ username: user.username, password: loginPassword }));
-                addNotification(`WELCOME BACK ${user.username}!`, 'success');
-                updateRankings();
-                loadAdminData();
+                setLoading(false);
             };
 
-            const logout = () => {
-                savePlayerToDB();
+            const logout = async () => {
+                await savePlayerToDB();
                 sessionStorage.removeItem('animeMastersSession');
                 setPlayer(null);
                 setIsAdmin(false);
@@ -1074,31 +939,34 @@
             // ==================== EFFECTS ====================
             
             useEffect(() => {
-                const currentSession = sessionStorage.getItem('animeMastersSession');
-                if (currentSession) {
-                    const session = JSON.parse(currentSession);
-                    const userData = findUserByUsername(session.username);
-                    if (userData && userData.password === session.password) {
-                        const gameData = loadPlayerFromDB(userData);
-                        setPlayer(gameData);
-                        setMineBlocks(initMineBlocks());
-                        setCurrentBossIndex(gameData.bossProgress || 1);
-                        setScreen('game');
-                        if (userData.isAdmin) setIsAdmin(true);
-                        if (session.username === 'ADMIN') setIsAdmin(true);
-                        updateRankings();
-                        loadAdminData();
-                    } else {
-                        sessionStorage.removeItem('animeMastersSession');
+                const checkSession = async () => {
+                    const currentSession = sessionStorage.getItem('animeMastersSession');
+                    if (currentSession && window.AnimeDB) {
+                        const session = JSON.parse(currentSession);
+                        const userData = await window.AnimeDB.findUserByUsername(session.username);
+                        if (userData && userData.password === session.password) {
+                            const gameData = loadPlayerFromDB(userData);
+                            setPlayer(gameData);
+                            setMineBlocks(initMineBlocks());
+                            setCurrentBossIndex(gameData.bossProgress || 1);
+                            setScreen('game');
+                            if (userData.is_admin) setIsAdmin(true);
+                            if (session.username === 'ADMIN') setIsAdmin(true);
+                            updateRankings();
+                            loadAdminData();
+                        } else {
+                            sessionStorage.removeItem('animeMastersSession');
+                        }
                     }
-                }
+                };
+                checkSession();
             }, [loadPlayerFromDB, initMineBlocks, updateRankings]);
 
             useEffect(() => {
                 if (screen === 'game' && player) {
                     const interval = setInterval(() => {
                         savePlayerToDB();
-                    }, 10000);
+                    }, 30000);
                     return () => clearInterval(interval);
                 }
             }, [screen, player, savePlayerToDB]);
@@ -1138,20 +1006,20 @@
                             <div className="text-center mb-8">
                                 <div className="text-8xl mb-4 animate-pixel-bounce">⚔️</div>
                                 <h1 className="text-xl font-bold text-green-400 pixel-text-shadow">ANIME MASTERS</h1>
-                                <p className="text-gray-600 text-[8px] mt-4">[ PIXEL RPG v3.0 ]</p>
+                                <p className="text-gray-600 text-[8px] mt-4">[ PIXEL RPG v4.0 - ONLINE ]</p>
                             </div>
                             
                             <div className="bg-black border-4 border-green-500 p-6 pixel-card">
                                 <div className="space-y-4">
                                     <input type="text" placeholder="> USERNAME" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-3 text-green-400 font-mono text-xs focus:border-green-500 outline-none" onKeyPress={(e) => e.key === 'Enter' && login()} />
                                     <input type="password" placeholder="> PASSWORD" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-3 text-green-400 font-mono text-xs focus:border-green-500 outline-none" onKeyPress={(e) => e.key === 'Enter' && login()} />
-                                    <button onClick={login} className="w-full bg-green-700 hover:bg-green-800 border-2 border-green-500 py-3 font-bold text-white pixel-btn transition text-xs">[ START GAME ]</button>
+                                    <button onClick={login} disabled={loading} className="w-full bg-green-700 hover:bg-green-800 border-2 border-green-500 py-3 font-bold text-white pixel-btn transition text-xs disabled:opacity-50">[ {loading ? 'LOADING...' : 'START GAME'} ]</button>
                                     <div className="text-center text-gray-700 text-[8px]">[ OR ]</div>
                                     <div className="space-y-3">
                                         <input type="text" placeholder="> NEW USER" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-3 text-green-400 font-mono text-xs focus:border-green-500 outline-none" />
                                         <input type="email" placeholder="> EMAIL" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-3 text-green-400 font-mono text-xs focus:border-green-500 outline-none" />
                                         <input type="password" placeholder="> PASSWORD (MIN 4)" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-900 border-2 border-gray-700 p-3 text-green-400 font-mono text-xs focus:border-green-500 outline-none" />
-                                        <button onClick={register} className="w-full bg-gray-800 hover:bg-gray-700 border-2 border-gray-600 py-3 font-bold text-white pixel-btn transition text-xs">[ CREATE ACCOUNT ]</button>
+                                        <button onClick={register} disabled={loading} className="w-full bg-gray-800 hover:bg-gray-700 border-2 border-gray-600 py-3 font-bold text-white pixel-btn transition text-xs disabled:opacity-50">[ {loading ? 'LOADING...' : 'CREATE ACCOUNT'} ]</button>
                                     </div>
                                 </div>
                                 <div className="mt-4 pt-4 border-t-2 border-gray-800">
@@ -1406,7 +1274,7 @@
                                     <button onClick={activateVIPCode} className="bg-yellow-800 border-2 border-yellow-600 px-4 py-2 text-[8px] font-bold pixel-btn">[ ACTIVATE ]</button>
                                 </div>
                                 <div className="text-[6px] text-gray-500 text-center mt-3">
-                                    * VIP bonuses stack with all game mechanics (mining, combat, rewards)
+                                    * VIP bonuses stack with all game mechanics
                                 </div>
                             </div>
                         </div>
@@ -1429,7 +1297,7 @@
                                         <tbody>
                                             {topPlayers.coins.map((user, idx) => (
                                                 <tr key={idx} className={user.username === player?.username ? 'bg-yellow-900/30' : ''}>
-                                                    <td>{idx+1}</td><td className="text-green-400">{user.username}</td><td>{formatNumber(user.gameData?.coins || 0)}</td>
+                                                    <td>{idx+1}</td><td className="text-green-400">{user.username}</td><td>{formatNumber(user.game_data?.coins || 0)}</td>
                                                 </tr>
                                             ))}
                                             {topPlayers.coins.length === 0 && <tr><td colSpan="3" className="text-center text-gray-500">NO DATA</td></tr>}
@@ -1444,7 +1312,7 @@
                                         <tbody>
                                             {topPlayers.gems.map((user, idx) => (
                                                 <tr key={idx} className={user.username === player?.username ? 'bg-yellow-900/30' : ''}>
-                                                    <td>{idx+1}</td><td className="text-green-400">{user.username}</td><td>{user.gameData?.gems || 0}</td>
+                                                    <td>{idx+1}</td><td className="text-green-400">{user.username}</td><td>{user.game_data?.gems || 0}</td>
                                                 </tr>
                                             ))}
                                             {topPlayers.gems.length === 0 && <tr><td colSpan="3" className="text-center text-gray-500">NO DATA</td></tr>}
@@ -1459,7 +1327,7 @@
                                         <tbody>
                                             {topPlayers.level.map((user, idx) => (
                                                 <tr key={idx} className={user.username === player?.username ? 'bg-yellow-900/30' : ''}>
-                                                    <td>{idx+1}</td><td className="text-green-400">{user.username}</td><td>{user.gameData?.pickaxeLevel || 0}</td>
+                                                    <td>{idx+1}</td><td className="text-green-400">{user.username}</td><td>{user.game_data?.pickaxeLevel || 0}</td>
                                                 </tr>
                                             ))}
                                             {topPlayers.level.length === 0 && <tr><td colSpan="3" className="text-center text-gray-500">NO DATA</td></tr>}
@@ -1467,7 +1335,7 @@
                                     </table>
                                 </div>
                             </div>
-                            <div className="text-center text-[6px] text-gray-500 mt-4">* Updated every 10 seconds</div>
+                            <div className="text-center text-[6px] text-gray-500 mt-4">* Updated every 30 seconds</div>
                         </div>
                     )}
                     
@@ -1477,68 +1345,34 @@
                             <div className="flex gap-2 mb-4 flex-wrap">
                                 <button onClick={() => setAdminSubTab('users')} className={`px-3 py-1 border-2 text-[8px] font-bold transition ${adminSubTab === 'users' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ USERS ]</button>
                                 <button onClick={() => setAdminSubTab('vipkeys')} className={`px-3 py-1 border-2 text-[8px] font-bold transition ${adminSubTab === 'vipkeys' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ VIP KEYS ]</button>
-                                <button onClick={() => setAdminSubTab('create')} className={`px-3 py-1 border-2 text-[8px] font-bold transition ${adminSubTab === 'create' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ CREATE USER ]</button>
                                 <button onClick={() => setAdminSubTab('stats')} className={`px-3 py-1 border-2 text-[8px] font-bold transition ${adminSubTab === 'stats' ? 'bg-red-900 border-red-500 text-red-400' : 'bg-gray-900 border-gray-700 text-gray-500'}`}>[ STATS ]</button>
                             </div>
                             
                             {adminSubTab === 'users' && (
-                                <div>
-                                    <div className="flex justify-between mb-3">
-                                        <span className="text-red-400 text-[10px]">📋 USER LIST</span>
-                                    </div>
-                                    <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                                        <table className="admin-table w-full text-left">
-                                            <thead>
-                                                <tr><th>ID</th><th>USERNAME</th><th>EMAIL</th><th>ADMIN</th><th>COINS</th><th>GEMS</th><th>LEVEL</th><th>VIP</th><th>CLAN</th><th>ACTIONS</th></tr>
-                                            </thead>
-                                            <tbody>
-                                                {adminUsers.map(user => (
-                                                    <tr key={user.id}>
-                                                        <td>{user.id}</td>
-                                                        <td className="font-bold text-green-400">{user.username}</td>
-                                                        <td className="text-[8px]">{user.email}</td>
-                                                        <td>{user.isAdmin ? '👑' : '❌'}</td>
-                                                        <td>{formatNumber(user.gameData?.coins || 0)}</td>
-                                                        <td>{user.gameData?.gems || 0}</td>
-                                                        <td>{user.gameData?.pickaxeLevel || 0}</td>
-                                                        <td>{user.gameData?.vipLevel || 0}</td>
-                                                        <td>{user.gameData?.clan?.name || 'FIGHTER'}</td>
-                                                        <td>
-                                                            <button onClick={() => {
-                                                                const newCoins = prompt('Set Coins:', user.gameData?.coins || 0);
-                                                                const newGems = prompt('Set Gems:', user.gameData?.gems || 0);
-                                                                const newDamage = prompt('Set Damage:', user.gameData?.damage || 0);
-                                                                if (newCoins || newGems || newDamage) {
-                                                                    let gameData = user.gameData || {};
-                                                                    if (newCoins) gameData.coins = parseInt(newCoins);
-                                                                    if (newGems) gameData.gems = parseInt(newGems);
-                                                                    if (newDamage) gameData.damage = parseInt(newDamage);
-                                                                    updateUser(user.username, { gameData });
-                                                                    loadAdminData();
-                                                                    addNotification(`✅ User ${user.username} updated!`, 'success');
-                                                                }
-                                                            }} className="bg-blue-900 px-2 py-1 text-[6px] mr-1 pixel-btn">EDIT</button>
-                                                            <button onClick={() => {
-                                                                if (confirm(`Delete ${user.username}?`)) {
-                                                                    const db = initDatabase();
-                                                                    db.users = db.users.filter(u => u.username !== user.username);
-                                                                    saveDatabase(db);
-                                                                    loadAdminData();
-                                                                    addNotification(`✅ User ${user.username} deleted!`, 'success');
-                                                                }
-                                                            }} className="bg-red-900 px-2 py-1 text-[6px] pixel-btn">DEL</button>
-                                                         </td>
-                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                                    <table className="admin-table w-full text-left">
+                                        <thead><tr><th>ID</th><th>USERNAME</th><th>EMAIL</th><th>COINS</th><th>GEMS</th><th>LEVEL</th><th>VIP</th><th>CLAN</th></tr></thead>
+                                        <tbody>
+                                            {adminUsers.map(user => (
+                                                <tr key={user.id}>
+                                                    <td>{user.id}</td>
+                                                    <td className="text-green-400">{user.username}</td>
+                                                    <td className="text-[8px]">{user.email}</td>
+                                                    <td>{formatNumber(user.game_data?.coins || 0)}</td>
+                                                    <td>{user.game_data?.gems || 0}</td>
+                                                    <td>{user.game_data?.pickaxeLevel || 0}</td>
+                                                    <td>{user.game_data?.vipLevel || 0}</td>
+                                                    <td>{user.game_data?.clan?.name || 'FIGHTER'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
                             )}
                             
                             {adminSubTab === 'vipkeys' && (
                                 <div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                         <div className="bg-gray-900 border border-yellow-600 p-3">
                                             <span className="text-yellow-400 text-[8px]">🔑 GENERATE VIP KEYS</span>
                                             <div className="mt-2 space-y-2">
@@ -1559,59 +1393,18 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="mt-4 bg-gray-900 border border-purple-600 p-3">
+                                    <div className="bg-gray-900 border border-purple-600 p-3">
                                         <span className="text-purple-400 text-[8px]">📋 ALL VIP KEYS</span>
                                         <div className="mt-2 max-h-48 overflow-y-auto">
                                             <table className="admin-table w-full text-left text-[8px]">
                                                 <thead><tr><th>KEY</th><th>LEVEL</th><th>STATUS</th><th>USED BY</th></tr></thead>
                                                 <tbody>
                                                     {adminVIPKeys.slice().reverse().map((key, i) => (
-                                                        <tr key={i}><td className="font-mono">{key.key}</td><td>{key.vipLevel}</td><td className={key.used ? 'text-red-400' : 'text-green-400'}>{key.used ? 'USED' : 'ACTIVE'}</td><td>{key.usedBy || '-'}</td></tr>
+                                                        <tr key={i}><td className="font-mono">{key.key_code}</td><td>{key.vip_level}</td><td className={key.used ? 'text-red-400' : 'text-green-400'}>{key.used ? 'USED' : 'ACTIVE'}</td><td>{key.used_by || '-'}</td></tr>
                                                     ))}
                                                 </tbody>
                                             </table>
                                         </div>
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {adminSubTab === 'create' && (
-                                <div className="max-w-md mx-auto">
-                                    <div className="space-y-3">
-                                        <input type="text" placeholder="USERNAME" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-2 text-xs text-green-400" />
-                                        <input type="email" placeholder="EMAIL" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-2 text-xs text-green-400" />
-                                        <input type="password" placeholder="PASSWORD" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-gray-900 border border-gray-700 p-2 text-xs text-green-400" />
-                                        <label className="flex items-center gap-2"><input type="checkbox" checked={newIsAdmin} onChange={(e) => setNewIsAdmin(e.target.checked)} /><span className="text-[8px] text-gray-400">Admin User</span></label>
-                                        <button onClick={() => {
-                                            if (!newUsername || !newEmail || !newPassword) {
-                                                addNotification('❌ All fields required!', 'error');
-                                                return;
-                                            }
-                                            if (newPassword.length < 4) {
-                                                addNotification('❌ Password too short!', 'error');
-                                                return;
-                                            }
-                                            try {
-                                                const clan = { name: 'FIGHTER', damage: 1.1, luck: 1 };
-                                                createUser({
-                                                    username: newUsername,
-                                                    email: newEmail,
-                                                    password: newPassword,
-                                                    isAdmin: newIsAdmin,
-                                                    gameData: {
-                                                        clan: clan, coins: 1000, gems: 10, enchantStones: 5, damage: 11,
-                                                        pickaxeLevel: 1, pickaxeMultiplier: 1, keys: { common: 1, rare: 0, divine: 0 },
-                                                        swords: [], characters: [], equippedCharacters: [], equippedSword: null,
-                                                        rebirths: 0, totalMined: 0, vipLevel: 0, vipBonus: 0
-                                                    }
-                                                });
-                                                addNotification(`✅ User ${newUsername} created!`, 'success');
-                                                setNewUsername(''); setNewEmail(''); setNewPassword(''); setNewIsAdmin(false);
-                                                loadAdminData();
-                                            } catch (error) {
-                                                addNotification(`❌ ${error.message}`, 'error');
-                                            }
-                                        }} className="w-full bg-blue-800 border border-blue-500 py-2 text-[8px] font-bold pixel-btn">[ CREATE USER ]</button>
                                     </div>
                                 </div>
                             )}
@@ -1653,7 +1446,17 @@
             );
         }
 
-        ReactDOM.createRoot(document.getElementById("root")).render(<AnimeMasters />);
+        // Aguardar o database.js carregar
+        function waitForDB() {
+            if (window.AnimeDB) {
+                ReactDOM.createRoot(document.getElementById("root")).render(<AnimeMasters />);
+            } else {
+                setTimeout(waitForDB, 100);
+            }
+        }
+        
+        waitForDB();
     </script>
+    <script src="database.js"></script>
 </body>
 </html>
