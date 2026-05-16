@@ -71,6 +71,21 @@ async function getAllUsers() {
 async function updateLastLogin(username) {
     return updateUser(username, { last_login: new Date().toISOString() });
 }
+console.log('✅ Database conectado ao Supabase!');
+// ==================== USUÁRIOS ====================
+
+// ADICIONE ESTA FUNÇÃO:
+async function deleteUser(username) {
+    const { data, error } = await supabaseClient
+        .from('users')
+        .delete()
+        .ilike('username', username)
+        .select()
+        .single();
+    
+    if (error) throw new Error(error.message);
+    return data;
+}
 
 // ==================== VIP KEYS ====================
 
@@ -153,6 +168,7 @@ window.AnimeDB = {
     findUserByUsername,
     findUserByEmail,
     createUser,
+    deleteUser,
     updateUser,
     getAllUsers,
     updateLastLogin,
@@ -163,18 +179,3 @@ window.AnimeDB = {
     getAllVIPKeys
 };
 
-console.log('✅ Database conectado ao Supabase!');
-// ==================== USUÁRIOS ====================
-
-// ADICIONE ESTA FUNÇÃO:
-async function deleteUser(username) {
-    const { data, error } = await supabaseClient
-        .from('users')
-        .delete()
-        .ilike('username', username)
-        .select()
-        .single();
-    
-    if (error) throw new Error(error.message);
-    return data;
-}
