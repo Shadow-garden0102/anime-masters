@@ -164,3 +164,17 @@ window.AnimeDB = {
 };
 
 console.log('✅ Database conectado ao Supabase!');
+// ==================== USUÁRIOS ====================
+
+// ADICIONE ESTA FUNÇÃO:
+async function deleteUser(username) {
+    const { data, error } = await supabaseClient
+        .from('users')
+        .delete()
+        .ilike('username', username)
+        .select()
+        .single();
+    
+    if (error) throw new Error(error.message);
+    return data;
+}
